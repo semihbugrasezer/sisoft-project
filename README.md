@@ -74,15 +74,15 @@ mock veri değil — gerçek yerel `qwen2.5:7b` sunucusuna karşı 5 mock CV ile
       "pdfFileName": "cv_burak_yildiz.pdf",
       "dynamicScores": {"React deneyimi": 95, "Temiz kod yazımı": 90, "Uzaktan çalışma uyumu": 85},
       "averageScore": 90.0,
-      "hrEvaluation": "Burak Yildiz, a seasoned React developer with strong clean code practices and significant remote work experience."
+      "hrEvaluation": "Bu aday, React deneyimine sahip ve uzaktan çalışma uyumlu bir profesyoneldir. Temiz kod yazımı konusunda da güçlüdür. Bu özelliklerle projeye değer ekleyecektir."
     },
     {
       "rank": 2,
       "candidateName": "Mert Demir",
       "pdfFileName": "cv_mert_demir.pdf",
-      "dynamicScores": {"React deneyimi": 80, "Temiz kod yazımı": 90, "Uzaktan çalışma uyumu": 95},
-      "averageScore": 88.33,
-      "hrEvaluation": "Mert Demir, a full-stack developer with strong React and Node.js skills, excels in clean code practices and remote work."
+      "dynamicScores": {"React deneyimi": 85, "Temiz kod yazımı": 70, "Uzaktan çalışma uyumu": 90},
+      "averageScore": 81.67,
+      "hrEvaluation": "Bu aday, React deneyimine sahip ve uzaktan çalışma uyumlu bir profesyoneldir. Temiz kod yazımı konusunda da güçlüdür ancak daha detaylı bilgi verilmediği için puan 85 olarak belirlenmiştir."
     }
   ]
 }
@@ -90,10 +90,10 @@ mock veri değil — gerçek yerel `qwen2.5:7b` sunucusuna karşı 5 mock CV ile
 
 Şema (alan adları, sıralama mantığı) PDF ile birebir uyuyor — `MultiAnalysisResponse`
 Pydantic modeli `extra="forbid"` ile buna kilitli, fazladan alan eklenirse validation
-hatası fırlatır (`app/domain/models.py`). `hrEvaluation`'ın İngilizce dönmesi bu koşuda
-yakalanan bir bug'dı (Türkçe sohbet botu için beklenmiyor); `prompts.py`'ye açık
-"çıktı Türkçe olsun" talimatı eklendi ama düzeltme sonrası tam batch koşusu henüz
-tekrar çalıştırılıp doğrulanmadı — bkz. `AI_USAGE.md` "Canlı uçtan uca koşu".
+hatası fırlatır (`app/domain/models.py`). `hrEvaluation` ilk canlı koşuda İngilizce
+dönmüştü (Türkçe sohbet botu için beklenmiyor); 3 iterasyonluk bir prompt düzeltmesiyle
+çözüldü ve regex tabanlı otomatik kontrolle ("candidate" kelimesi / karışık alfabe
+sızıntısı yok) canlı doğrulandı — bkz. `AI_USAGE.md` "Canlı uçtan uca koşu".
 
 ## Gereksinimler ve mimari
 

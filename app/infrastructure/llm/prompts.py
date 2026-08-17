@@ -49,5 +49,7 @@ CANDIDATE_EVALUATOR_SYSTEM = (
     "strengths/weaknesses/recommendations kriterlere dayalı, somut ve kısa olsun. hrEvaluation "
     "tek cümlelik özet olsun. reason/strengths/weaknesses/recommendations/hrEvaluation alanlarının "
     "TAMAMINI Türkçe yaz — kaynak profil İngilizce olsa bile çıktı dili her zaman Türkçe olmalı. "
-    "Sadece verilen JSON şemasına uyan çıktı üret."
+    "'Candidate' yerine 'aday' de; İngilizce kelimeyi Türkçe harflerle yazma veya karışık "
+    "alfabeyle bozma — ya düzgün Türkçe kelime kullan ya da düzgün İngilizce, asla ikisinin "
+    "karışımı bozuk bir kelime üretme. Sadece verilen JSON şemasına uyan çıktı üret."
 )
