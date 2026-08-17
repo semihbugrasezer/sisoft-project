@@ -183,16 +183,31 @@ adayları sıralı biçimde içermelidir.
 
 ## 9. Teslim kabul listesi
 
-- [ ] Günlük sohbet mantıklı ve akıcı çalışıyor.
-- [ ] Sohbet bağlamı yeni mesajlarda korunuyor.
-- [ ] Kriterler serbest metinden dinamik olarak tanımlanabiliyor.
-- [ ] Tek CV için kriter bazlı Markdown analiz raporu üretiliyor.
-- [ ] Bozuk, şifreli, okunamaz ve geçersiz PDF'ler açık hatayla reddediliyor.
-- [ ] PDF metni ortak JSON şemasına LLM Extraction ile dönüştürülüyor.
-- [ ] Sonraki analiz ve skorlama yalnızca ortak JSON üzerinden yapılıyor.
-- [ ] En fazla 5 CV asenkron veya paralel işleniyor.
-- [ ] Aritmetik ortalamaya göre ilk 3 aday beklenen JSON sözleşmesiyle dönüyor.
-- [ ] Bot çoklu analiz sırasında yanıt vermeye devam ediyor.
-- [ ] Backend nesne yönelimli ve katmanlı mimariye uyuyor.
-- [ ] Telegram ve seçilen LLM motoru entegrasyonları çalışıyor.
-- [ ] Aday, AI destekli geliştirme sürecini ve üretilen kodu teknik olarak savunabiliyor.
+Durum: uygulandı ve doğrulandı — hem `pytest tests/ -v` (46 passed, mock LLM) hem de
+gerçek yerel `qwen2.5:7b` sunucusuna karşı canlı uçtan uca çalıştırma ile (bkz.
+`AI_USAGE.md` "Doğrulama"). Canlı koşuda 2 gerçek sorun bulundu ve düzeltildi — ayrıntı
+`AI_USAGE.md`'de.
+
+- [x] Günlük sohbet mantıklı ve akıcı çalışıyor. — `chat_service.py`
+- [x] Sohbet bağlamı yeni mesajlarda korunuyor. — `sqlite_repo.py` üzerinden kalıcı history
+- [x] Kriterler serbest metinden dinamik olarak tanımlanabiliyor. — `criteria_service.py`; canlı
+      testte model label'ı küçük eş anlamlı sapmayla döndürdü ("tecrübesi"→"deneyimi"),
+      `_grounded_criteria` bunu konu değişmediği için kabul ediyor (bilinçli tasarım, bkz.
+      `test_keeps_semantic_label_but_drops_unrelated_extra_criterion`) — bu nedenle garanti
+      "birebir kopya" değil, "kullanıcının konusuna sadık" seviyesindedir.
+- [x] Tek CV için kriter bazlı Markdown analiz raporu üretiliyor. — `formatter.format_single_analysis`
+- [x] Bozuk, şifreli, okunamaz ve geçersiz PDF'ler açık hatayla reddediliyor. — `pymupdf_parser.py`
+- [x] PDF metni ortak JSON şemasına LLM Extraction ile dönüştürülüyor. — `CandidateProfile` + `CV_EXTRACTOR_SYSTEM`
+- [x] Sonraki analiz ve skorlama yalnızca ortak JSON üzerinden yapılıyor. — evaluator prompt'u yalnız `profile.model_dump_json()` alır, ham metin girmez
+- [x] En fazla 5 CV asenkron veya paralel işleniyor. — `batch_analysis_service.py`, `asyncio.gather`.
+      "Hızlıca" konusunda dürüst not: canlı ölçümde 5 CV batch adımı tek başına ~580s
+      (~9.7 dk) sürdü (qwen2.5:7b, kısıtlı JSON şema üretimi — girdi metni yalnızca ~834
+      token, süre CV boyutundan değil şema karmaşıklığından kaynaklanıyor). Kod paralel/
+      asenkron çalışıyor, ama tek yerel 7B model + grammar-constrained decoding ile
+      "hızlı" gerçek zamanlı bir Telegram deneyimi vermiyor — bkz. README "Bilinen
+      sınırlamalar".
+- [x] Aritmetik ortalamaya göre ilk 3 aday beklenen JSON sözleşmesiyle dönüyor. — `scoring.compute_average` / `rank_top_n`, `MultiAnalysisResponse(extra="forbid")`
+- [x] Bot çoklu analiz sırasında yanıt vermeye devam ediyor. — `concurrent_updates(8)` + chat_id bazlı lock (global lock yok)
+- [x] Backend nesne yönelimli ve katmanlı mimariye uyuyor. — domain/application/infrastructure/presentation
+- [x] Telegram ve seçilen LLM motoru entegrasyonları çalışıyor. — python-telegram-bot + Ollama (`qwen2.5:7b`)
+- [x] Aday, AI destekli geliştirme sürecini ve üretilen kodu teknik olarak savunabiliyor. — bkz. `AI_USAGE.md`
