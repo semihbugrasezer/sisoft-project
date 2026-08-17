@@ -248,11 +248,11 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             buf.timer_task.cancel()
 
         if len(buf.files) >= container.config.max_cv_count:
-            buf.timer_task = asyncio.create_task(
+            buf.timer_task = context.application.create_task(
                 _debounce_and_trigger(context, chat_id, media_group_id, criteria, delay=0)
             )
         else:
-            buf.timer_task = asyncio.create_task(
+            buf.timer_task = context.application.create_task(
                 _debounce_and_trigger(
                     context, chat_id, media_group_id, criteria, delay=MEDIA_GROUP_DEBOUNCE_SECONDS
                 )
@@ -276,7 +276,9 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     # Albümsüz, toplu mod değil: tek dosya, hemen işlenir.
-    await update.message.reply_text("CV analiz ediliyor, birkaç saniye sürebilir...")
+    await update.message.reply_text(
+        "CV analiz ediliyor; yerel modelin hızına göre birkaç dakika sürebilir..."
+    )
     await _process_files(context, chat_id, [(document.file_name, pdf_bytes)], criteria)
 
 

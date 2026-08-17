@@ -26,9 +26,22 @@ class FakeCVService:
         filename = text.replace("text-of-", "")
         if self.behaviors[filename] == "llm_fail":
             raise LLMOutputValidationError("şema hatası")
-        profile = CandidateProfile(candidateName=filename)
+        profile = CandidateProfile(
+            candidateName=filename,
+            contact={},
+            summary=None,
+            skills=[],
+            workExperiences=[],
+            education=[],
+            languages=[],
+        )
         evaluation = EvaluationResult(
-            scores=[CriterionScore(criterionId="react", criterionLabel="React", score=80, reason="x")],
+            scores=[
+                CriterionScore(
+                    criterionId="react", criterionLabel="React", score=80,
+                    evidence=["x"], reason="x",
+                )
+            ],
             strengths=["x"], weaknesses=[], recommendations=[], hrEvaluation="iyi",
         )
         return profile, evaluation
