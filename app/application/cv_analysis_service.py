@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app.domain.errors import LLMOutputValidationError
 from app.domain.models import CandidateProfile, Criterion, EvaluationResult
 from app.infrastructure.llm.ollama_client import OllamaClient
 from app.infrastructure.llm.prompts import CANDIDATE_EVALUATOR_SYSTEM, CV_EXTRACTOR_SYSTEM
@@ -29,16 +30,30 @@ class CVAnalysisService:
             CV_EXTRACTOR_SYSTEM, f"SOURCE_TEXT:\n{text}", CandidateProfile
         )
 
-        criteria_json = "\n".join(f"- {c.label}: {c.description}" for c in criteria)
+        criteria_json = "\n".join(
+            f"- id={c.id}; label={c.label}; description={c.description}" for c in criteria
+        )
         user_prompt = (
             f"CANDIDATE_PROFILE (JSON):\n{profile.model_dump_json()}\n\n"
             f"CRITERIA:\n{criteria_json}\n\n"
-            "criterionLabel alanında yukarıdaki kriter etiketlerini birebir kullan."
+            "criterionId ve criterionLabel alanlarında yukarıdaki değerleri birebir kullan."
         )
         evaluation = await self._llm.structured_chat(
             CANDIDATE_EVALUATOR_SYSTEM, user_prompt, EvaluationResult
         )
-        return profile, evaluation
+
+        scores_by_id = {score.criterionId: score for score in evaluation.scores}
+        expected_ids = {criterion.id for criterion in criteria}
+        if len(scores_by_id) != len(evaluation.scores) or set(scores_by_id) != expected_ids:
+            raise LLMOutputValidationError("Model kriterlerin her biri için tek bir skor üretmedi.")
+
+        normalized_scores = [
+            scores_by_id[criterion.id].model_copy(
+                update={"criterionLabel": criterion.label}
+            )
+            for criterion in criteria
+        ]
+        return profile, evaluation.model_copy(update={"scores": normalized_scores})
 
     async def analyze(
         self, pdf_bytes: bytes, criteria: list[Criterion]

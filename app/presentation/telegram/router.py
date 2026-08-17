@@ -23,7 +23,13 @@ def build_application(token: str, container: Container) -> Application:
         await container.llm.aclose()
         await container.repo.close()
 
-    application = Application.builder().token(token).post_shutdown(_post_shutdown).build()
+    application = (
+        Application.builder()
+        .token(token)
+        .concurrent_updates(8)
+        .post_shutdown(_post_shutdown)
+        .build()
+    )
     application.bot_data["container"] = container
 
     application.add_handler(CommandHandler("start", start_command))

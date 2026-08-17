@@ -46,13 +46,13 @@ class Language(BaseModel):
 
 
 class CandidateProfile(BaseModel):
-    candidateName: str | None = None
-    contact: Contact = Field(default_factory=Contact)
-    summary: str | None = None
-    skills: list[str] = Field(default_factory=list)
-    workExperiences: list[WorkExperience] = Field(default_factory=list)
-    education: list[Education] = Field(default_factory=list)
-    languages: list[Language] = Field(default_factory=list)
+    candidateName: str | None
+    contact: Contact
+    summary: str | None
+    skills: list[str]
+    workExperiences: list[WorkExperience]
+    education: list[Education]
+    languages: list[Language]
 
 
 # --- Değerlendirme (CandidateEvaluator çıktısı) -------------------------
@@ -61,7 +61,10 @@ class CriterionScore(BaseModel):
     criterionId: str
     criterionLabel: str
     score: int = Field(ge=0, le=100)
-    evidence: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(
+        min_length=1,
+        description="Profildeki somut kanıtlar; kanıt yoksa tek eleman olarak 'Kanıt yok'",
+    )
     reason: str
 
 

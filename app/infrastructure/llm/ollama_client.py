@@ -66,7 +66,10 @@ class OllamaClient:
         try:
             return response_model.model_validate_json(raw)
         except (ValidationError, json.JSONDecodeError) as first_error:
-            logger.info("Şema doğrulama hatası, retry deneniyor: %s", first_error)
+            logger.info(
+                "Şema doğrulama hatası, retry deneniyor (%s)",
+                type(first_error).__name__,
+            )
             retry_messages = messages + [
                 {"role": "assistant", "content": raw},
                 {
