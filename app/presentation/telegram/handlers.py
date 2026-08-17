@@ -1,4 +1,4 @@
-"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (RULES.md §6)."""
+"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (README.md §6)."""
 from __future__ import annotations
 
 import asyncio
@@ -42,7 +42,7 @@ def _container(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> asyncio.Lock:
-    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (RULES.md §5)."""
+    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (README.md §5)."""
     locks: dict[int, asyncio.Lock] = context.application.bot_data.setdefault("chat_locks", {})
     if chat_id not in locks:
         locks[chat_id] = asyncio.Lock()
@@ -215,7 +215,7 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Sadece PDF dosyaları kabul edilir.")
         return
 
-    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (RULES.md §3).
+    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (README.md §3).
     caption = update.message.caption
     if caption:
         try:

@@ -1,4 +1,4 @@
-"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (RULES.md §3-5)."""
+"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (README.md §3-5)."""
 from __future__ import annotations
 
 from typing import Literal
