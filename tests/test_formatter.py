@@ -1,7 +1,11 @@
 import json
 
 from app.domain.models import CandidateProfile, EvaluationResult, MultiAnalysisResponse
-from app.presentation.telegram.formatter import format_multi_analysis_json, format_single_analysis
+from app.presentation.telegram.formatter import (
+    chunk_message,
+    format_multi_analysis_json,
+    format_single_analysis,
+)
 
 
 def test_single_analysis_escapes_dynamic_markdown():
@@ -38,3 +42,9 @@ def test_multi_analysis_output_is_valid_json():
         )
     )
     assert json.loads(output)["status"] == "success"
+
+
+def test_markdown_chunks_prefer_line_boundaries():
+    chunks = chunk_message("*Başlık*\n" + "satır\n" * 10, limit=20)
+    assert all(len(chunk) <= 20 for chunk in chunks)
+    assert chunks[0].endswith("satır")

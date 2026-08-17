@@ -56,8 +56,8 @@ python scripts/generate_mock_cvs.py   # mock_cvs/ altına 5 örnek CV yazar
 ## Gereksinimler ve mimari
 
 PDF ile birebir proje gereksinimleri için [`RULES.md`](./RULES.md) dosyasına bakın.
-Uygulama, bu gereksinimleri katmanlı mimari ve üç ayrı yapılandırılmış LLM çağrısıyla
-(CriteriaExtractor / CVExtractor / CandidateEvaluator) gerçekleştirir.
+Uygulama, bu gereksinimleri katmanlı mimari ve birbirinden ayrılmış LLM
+sorumluluklarıyla (kriter niyeti/extraction, CV extraction ve değerlendirme) gerçekleştirir.
 
 AI araçlarıyla geliştirme süreci ve promptlar için [`AI_USAGE.md`](./AI_USAGE.md).
 

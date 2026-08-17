@@ -77,6 +77,16 @@ def test_encrypted_pdf_is_rejected():
         validate_and_extract_text(payload)
 
 
+def test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits():
+    doc = pymupdf.open()
+    for _ in range(31):
+        doc.new_page().insert_text((50, 70), "A")
+    payload = doc.tobytes()
+    doc.close()
+
+    assert validate_and_extract_text(payload).strip()
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [

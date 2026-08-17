@@ -14,8 +14,9 @@ ve hangi kısımların manuel doğrulandığını açıklar.
    olgunluğu) tartışılarak, kütüphane dokümantasyonu `ctx7` (Context7) ile doğrulanarak
    yapıldı — özellikle Ollama'nın `/api/chat` `format` alanına Pydantic JSON Schema
    verilebildiği resmi dokümantasyondan teyit edildi.
-3. **Kod üretimi** — Tüm dosyalar Claude Code (Sonnet 5) ile, katman katman (domain →
-   infrastructure → application → presentation) üretildi.
+3. **Kod üretimi ve inceleme** — Dosyalar Claude Code ve Codex ile, katman katman
+   (domain → infrastructure → application → presentation) üretildi; standart ve PDF
+   uygunluk incelemeleri bağımsız ajanlarla tekrarlandı.
 4. **Doğrulama** — Her katman yazıldıktan sonra:
    - `pytest tests/` ile saf domain mantığı (ortalama, top-3 sıralama, eşitlik durumu)
      test edildi.
@@ -29,9 +30,9 @@ ve hangi kısımların manuel doğrulandığını açıklar.
 
 | Karar | Gerekçe |
 |---|---|
-| Tek dev-prompt yerine 3 ayrı LLM çağrısı | Extraction ve değerlendirme farklı sorumluluklar; hata kaynağı görünür olur, ayrı test edilebilir |
+| Tek dev-prompt yerine ayrı LLM sorumlulukları | Kriter niyeti/extraction, CV extraction ve değerlendirme farklı sorumluluklardır; hata kaynağı görünür olur, ayrı test edilebilir |
 | Ortalama backend'de hesaplanır, LLM'e yaptırılmaz | LLM aritmetik hatası/halüsinasyonu riskini ortadan kaldırır, deterministik sonuç |
-| Doğal dil kriter algılama (komut zorunlu değil) | PDF açıkça "serbest metin" diyor, komut şartı koşmuyor; anahtar-kelime heuristiği (`app/domain/intent.py`) kullanılır — tam LLM intent-classifier her sohbet mesajını ~60-90sn geciktirirdi, demo'yu yavaşlatırdı. `/criteria` her zaman açık bir kaçış yolu |
+| Doğal dil kriter algılama (komut zorunlu değil) | PDF açıkça "serbest metin" diyor; sabit anahtar kelime listesi yerine yapılandırılmış LLM intent+criteria extraction kullanılır. `/criteria` yalnız isteğe bağlı açık yoldur |
 | Albüm (`media_group_id`) + debounce, `/batch`+`/analyze` yedek | Telegram'da aynı anda seçilen dosyalar ayrı update olarak gelir, kaç dosya bekleneceği önceden bilinmez — albüm id'si aynı grubu işaretler, debounce/limit bu belirsizliği çözer; tek tek gönderim için `/batch`+`/analyze` yedek akış |
 | Batch'te validation ve LLM fail-fast | Bir dosya bozuksa LLM'e geçilmez; extraction/evaluation tüm CV'leri eksiksiz üretemezse PDF'nin "her CV'ye puan" şartını bozan kısmi sıralama yerine kontrollü hata döner |
 | `TopCandidate`/`MultiAnalysisResponse` `extra="forbid"` | PDF'teki JSON sözleşmesini kazayla bozacak ekstra alan (`failedCVs`, `confidence` vb.) eklenirse validation hatası fırlatır — şema sapması derlemede/testte yakalanır |
@@ -45,5 +46,5 @@ ve hangi kısımların manuel doğrulandığını açıklar.
   ile, mock veri değil).
 - Concurrency mantığının (paralel PDF validation + eşzamanlı Telegram update işleme +
   `chat_id` lock) bir batch işlenirken botu bloklamadığı.
-- PDF validation sırasının (imza → boyut → açılabilirlik → şifre → sayfa sayısı → metin
-  uzunluğu) her adımının doğru hata mesajı ürettiği.
+- PDF validation sırasının (imza → açılabilirlik → şifre → sayfa varlığı → okunabilir
+  metin) her adımının doğru hata mesajı ürettiği.

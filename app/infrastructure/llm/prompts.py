@@ -16,6 +16,15 @@ CRITERIA_EXTRACTOR_SYSTEM = (
     "Sadece verilen JSON şemasına uyan çıktı üret."
 )
 
+CRITERIA_INTENT_SYSTEM = (
+    "Kullanıcı mesajının CV'lerin hangi ölçütlere göre değerlendirileceğini tanımlayıp "
+    "tanımlamadığını belirle. Mesaj değerlendirme ölçütü tanımlıyorsa intent='criteria' "
+    "döndür ve kullanıcının yazdığı tüm kriterleri çıkar; tanımlamıyorsa intent='chat' ve "
+    "boş criteria döndür. Kriter için kısa snake_case id, kullanıcı metninden birebir "
+    "kopyalanmış kesintisiz label, kısa description ve evidenceHints üret. Anahtar kelime "
+    "listesi kullanma, kullanıcının yazmadığı kriter ekleme ve sadece JSON şemasına uy."
+)
+
 CV_EXTRACTOR_SYSTEM = (
     "Sen sıkı kurallara uyan bir CV bilgi çıkarıcısısın. SADECE SOURCE_TEXT içinde "
     "açıkça yazan bilgileri kullan. Yaş, kıdem, süre, dil seviyesi veya beceri asla tahmin "

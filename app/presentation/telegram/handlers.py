@@ -8,9 +8,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.domain.errors import AppError
-from app.domain.intent import looks_like_criteria_definition
 from app.domain.models import MAX_CV_COUNT, Criterion
 from app.presentation.telegram.formatter import (
+    TELEGRAM_MAX_LEN,
     chunk_message,
     format_multi_analysis_json,
     format_single_analysis,
@@ -95,8 +95,16 @@ async def _process_files(
             await context.bot.send_message(chat_id, exc.user_message)
             return
 
-        for chunk in chunk_message(format_multi_analysis_json(response)):
-            await context.bot.send_message(chat_id, chunk)
+        result_json = format_multi_analysis_json(response)
+        if len(result_json) <= TELEGRAM_MAX_LEN:
+            await context.bot.send_message(chat_id, result_json)
+        else:
+            await context.bot.send_document(
+                chat_id,
+                document=result_json.encode("utf-8"),
+                filename="top_candidates.json",
+                caption="Top 3 aday sonucu",
+            )
 
 
 async def _debounce_and_trigger(
@@ -181,12 +189,12 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = update.message.text
     container = _container(context)
 
-    if looks_like_criteria_definition(text):
-        try:
-            criteria = await container.criteria_service.define_criteria(chat_id, text)
-        except AppError as exc:
-            await update.message.reply_text(exc.user_message)
-            return
+    try:
+        criteria = await container.criteria_service.define_if_requested(chat_id, text)
+    except AppError as exc:
+        await update.message.reply_text(exc.user_message)
+        return
+    if criteria is not None:
         await _reply_criteria_saved(update, criteria)
         return
 
@@ -209,9 +217,9 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     # PDF caption'ında kriter cümlesi varsa önce onu kaydet (RULES.md §3).
     caption = update.message.caption
-    if caption and looks_like_criteria_definition(caption):
+    if caption:
         try:
-            await container.criteria_service.define_criteria(chat_id, caption)
+            await container.criteria_service.define_if_requested(chat_id, caption)
         except AppError as exc:
             await update.message.reply_text(exc.user_message)
             return
