@@ -87,6 +87,27 @@ grammar-constrained JSON şema üretiminin (5 iç içe `CandidateProfile`/`evalu
 nesnesi) doğal yavaşlığından kaynaklanıyor. PDF'in "hızlıca işlenmelidir" beklentisi
 bu donanım/model kombinasyonunda gerçek zamanlı bir Telegram deneyimi vermiyor —
 kod tarafı doğru (paralel validation + tek batch çağrısı, öncekinden çok daha az
-round-trip), darboğaz model/donanım. Mülakat savunmasında bu ölçümü saklamadan
-göster: "hızlı" göreceli, üretimde vLLM/daha güçlü GPU veya daha küçük model bu
-süreyi düşürür — mimari değişmeden.
+round-trip), darboğaz model/donanım.
+
+### Neden yavaş, nasıl çözülür (mülakat savunması)
+
+Bu ölçümü saklamadan göster: "hızlı" göreceli, kod zaten optimal noktada — kalan
+gecikme mimariden değil, tek yerel 7B modelin token-token JSON üretiminden geliyor.
+Değiştirmeden değerlendirilecek somut seçenekler (hiçbiri bu teslimde uygulanmadı,
+kapsam dışı bırakıldı — mimari değişmeden takılabilir noktalar):
+
+1. **Üretim ortamı: vLLM veya bulut GPU** — yerel Apple Silicon yerine dedicated
+   GPU + vLLM'in continuous batching'i, aynı mimariyle (aynı `OllamaClient` arayüzü,
+   farklı `base_url`) süreyi kayda değer düşürür. Kod tarafında tek satır config
+   değişikliği (`config.py`'de `ollama_base_url`), mimari sıfır değişiklik ister.
+2. **Daha küçük/hızlı model** — `phi3.5` (bu makinede zaten kurulu) veya
+   `qwen2.5:3b` ile aynı akış, doğruluk/hız trade-off'u karşılığında dener; extraction
+   kalitesi düşebilir, canlı test edilmedi.
+3. **Paralel per-CV çağrı** — şu anki "5 CV tek batch çağrıda" tasarımı yerine 5
+   eşzamanlı `asyncio.gather` çağrısı; Ollama sunucusu gerçekten paralel işleyebiliyorsa
+   (`OLLAMA_NUM_PARALLEL`) hızlanır, tek GPU'da seri işliyorsa fark etmez — mevcut
+   2-çağrılı tasarım bilinçli tercih edildi çünkü önceki 10-çağrılı akış timeout riski
+   taşıyordu (bkz. yukarıdaki "Önemli mimari kararlar" tablosu); bu geri adım riskli.
+
+Seçilmeyen sebep: teslim kapsamı sabit donanım/model üzerinde doğruluk ve mimari
+netliğini kanıtlamak; performans donanım değişkeni, kod değişkeni değil.
