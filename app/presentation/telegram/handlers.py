@@ -1,5 +1,4 @@
-"""Telegram I/O katmanı. Sadece mesaj al / servis çağır / cevap yolla — iş mantığı
-burada yazılmaz (RULES.md §3)."""
+"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (RULES.md §6)."""
 from __future__ import annotations
 
 import asyncio
@@ -9,9 +8,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.domain.errors import AppError
-from app.domain.intent import looks_like_criteria_definition
-from app.domain.models import Criterion
+from app.domain.models import MAX_CV_COUNT, Criterion
 from app.presentation.telegram.formatter import (
+    TELEGRAM_MAX_LEN,
     chunk_message,
     format_multi_analysis_json,
     format_single_analysis,
@@ -43,7 +42,7 @@ def _container(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> asyncio.Lock:
-    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (RULES.md §9)."""
+    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (RULES.md §5)."""
     locks: dict[int, asyncio.Lock] = context.application.bot_data.setdefault("chat_locks", {})
     if chat_id not in locks:
         locks[chat_id] = asyncio.Lock()
@@ -91,17 +90,21 @@ async def _process_files(
             return
 
         try:
-            result = await container.batch_service.analyze_batch(files, criteria)
+            response = await container.batch_service.analyze_batch(files, criteria)
         except AppError as exc:
             await context.bot.send_message(chat_id, exc.user_message)
             return
 
-        for chunk in chunk_message(format_multi_analysis_json(result.response)):
-            await context.bot.send_message(chat_id, chunk)
-        if result.failed:
-            failed_lines = ["İşlenemeyen dosyalar:"]
-            failed_lines += [f"- {name}: {msg}" for name, msg in result.failed]
-            await context.bot.send_message(chat_id, "\n".join(failed_lines))
+        result_json = format_multi_analysis_json(response)
+        if len(result_json) <= TELEGRAM_MAX_LEN:
+            await context.bot.send_message(chat_id, result_json)
+        else:
+            await context.bot.send_document(
+                chat_id,
+                document=result_json.encode("utf-8"),
+                filename="top_candidates.json",
+                caption="Top 3 aday sonucu",
+            )
 
 
 async def _debounce_and_trigger(
@@ -156,8 +159,7 @@ async def criteria_show_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Dosyaları albüm yerine tek tek göndermek isteyenler için isteğe bağlı yedek
-    akış (RULES.md §4). Albümle gönderiliyorsa buna gerek yok."""
+    """Dosyaları albüm yerine tek tek göndermek isteyenler için yedek akış."""
     chat_id = update.effective_chat.id
     _batch_mode_chats(context).add(chat_id)
     await update.message.reply_text(
@@ -187,12 +189,12 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = update.message.text
     container = _container(context)
 
-    if looks_like_criteria_definition(text):
-        try:
-            criteria = await container.criteria_service.define_criteria(chat_id, text)
-        except AppError as exc:
-            await update.message.reply_text(exc.user_message)
-            return
+    try:
+        criteria = await container.criteria_service.define_if_requested(chat_id, text)
+    except AppError as exc:
+        await update.message.reply_text(exc.user_message)
+        return
+    if criteria is not None:
         await _reply_criteria_saved(update, criteria)
         return
 
@@ -213,11 +215,11 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Sadece PDF dosyaları kabul edilir.")
         return
 
-    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (RULES.md §4).
+    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (RULES.md §3).
     caption = update.message.caption
-    if caption and looks_like_criteria_definition(caption):
+    if caption:
         try:
-            await container.criteria_service.define_criteria(chat_id, caption)
+            await container.criteria_service.define_if_requested(chat_id, caption)
         except AppError as exc:
             await update.message.reply_text(exc.user_message)
             return
@@ -235,11 +237,11 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if media_group_id:
         manager = _media_group_manager(context)
         buf, added = await manager.add_file(
-            chat_id, media_group_id, document.file_name, pdf_bytes, container.config.max_cv_count
+            chat_id, media_group_id, document.file_name, pdf_bytes, MAX_CV_COUNT
         )
         if not added:
             await update.message.reply_text(
-                f"En fazla {container.config.max_cv_count} CV yükleyebilirsiniz, "
+                f"En fazla {MAX_CV_COUNT} CV yükleyebilirsiniz, "
                 f"bu dosya atlandı: {document.file_name}"
             )
             return
@@ -247,7 +249,7 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if buf.timer_task and not buf.timer_task.done():
             buf.timer_task.cancel()
 
-        if len(buf.files) >= container.config.max_cv_count:
+        if len(buf.files) >= MAX_CV_COUNT:
             buf.timer_task = context.application.create_task(
                 _debounce_and_trigger(context, chat_id, media_group_id, criteria, delay=0)
             )
@@ -261,16 +263,16 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if chat_id in _batch_mode_chats(context):
         pending_count = await container.repo.count_pending_files(chat_id)
-        if pending_count >= container.config.max_cv_count:
+        if pending_count >= MAX_CV_COUNT:
             await update.message.reply_text(
-                f"En fazla {container.config.max_cv_count} CV yükleyebilirsiniz. "
+                f"En fazla {MAX_CV_COUNT} CV yükleyebilirsiniz. "
                 "/analyze ile başlatın veya /cancel ile temizleyin."
             )
             return
         await container.repo.add_pending_file(chat_id, document.file_name, pdf_bytes)
         new_count = pending_count + 1
         await update.message.reply_text(
-            f"{document.file_name} kuyruğa eklendi ({new_count}/{container.config.max_cv_count}). "
+            f"{document.file_name} kuyruğa eklendi ({new_count}/{MAX_CV_COUNT}). "
             "Analizi başlatmak için /analyze yazın."
         )
         return

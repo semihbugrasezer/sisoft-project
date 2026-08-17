@@ -1,7 +1,11 @@
-"""Domain şemaları. LLM çıktıları bu Pydantic modellerine zorlanır (bkz. RULES.md §5-7)."""
+"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (RULES.md §3-5)."""
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+MAX_CV_COUNT = 5
 
 
 # --- Kriter (CriteriaExtractor çıktısı) ---------------------------------
@@ -12,9 +16,38 @@ class Criterion(BaseModel):
     description: str
     evidenceHints: list[str] = Field(default_factory=list)
 
+    @field_validator("id", "label")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Kriter kimliği ve etiketi boş olamaz.")
+        return value
+
 
 class CriteriaExtractionResult(BaseModel):
-    criteria: list[Criterion] = Field(min_length=1, max_length=8)
+    criteria: list[Criterion] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def require_unique_criteria(self):
+        ids = [criterion.id for criterion in self.criteria]
+        labels = [criterion.label.casefold() for criterion in self.criteria]
+        if len(set(ids)) != len(ids) or len(set(labels)) != len(labels):
+            raise ValueError("Kriter kimlikleri ve etiketleri benzersiz olmalıdır.")
+        return self
+
+
+class CriteriaIntentResult(BaseModel):
+    intent: Literal["criteria", "chat"]
+    criteria: list[Criterion] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_intent_payload(self):
+        if self.intent == "criteria":
+            CriteriaExtractionResult(criteria=self.criteria)
+        elif self.criteria:
+            raise ValueError("Sohbet mesajı kriter içeremez.")
+        return self
 
 
 # --- CV profili (CVExtractor çıktısı) -----------------------------------
@@ -55,6 +88,15 @@ class CandidateProfile(BaseModel):
     languages: list[Language]
 
 
+class BatchProfileItem(BaseModel):
+    documentId: int
+    profile: CandidateProfile
+
+
+class BatchProfileResult(BaseModel):
+    candidates: list[BatchProfileItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
+
+
 # --- Değerlendirme (CandidateEvaluator çıktısı) -------------------------
 
 class CriterionScore(BaseModel):
@@ -74,6 +116,20 @@ class EvaluationResult(BaseModel):
     weaknesses: list[str]
     recommendations: list[str]
     hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
+
+
+class BatchCandidateEvaluation(BaseModel):
+    scores: list[CriterionScore]
+    hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
+
+
+class BatchEvaluationItem(BaseModel):
+    documentId: int
+    evaluation: BatchCandidateEvaluation
+
+
+class BatchEvaluationResult(BaseModel):
+    candidates: list[BatchEvaluationItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
 
 
 # --- Çoklu CV nihai çıktı — ödev PDF §4 şemasıyla birebir ----------------

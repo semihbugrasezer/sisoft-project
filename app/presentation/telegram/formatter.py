@@ -35,6 +35,15 @@ def format_multi_analysis_json(response: MultiAnalysisResponse) -> str:
 
 
 def chunk_message(text: str, limit: int = TELEGRAM_MAX_LEN) -> list[str]:
-    if len(text) <= limit:
-        return [text]
-    return [text[i : i + limit] for i in range(0, len(text), limit)]
+    chunks: list[str] = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit + 1)
+        if cut <= 0:
+            cut = limit
+            if cut > 1 and text[cut - 1] == "\\":
+                cut -= 1
+        chunks.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    if text:
+        chunks.append(text)
+    return chunks

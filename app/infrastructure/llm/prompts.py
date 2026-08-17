@@ -1,4 +1,4 @@
-"""Tüm system prompt'lar tek yerde (bkz. RULES.md §5). Her görev ayrı, dar sorumluluklu prompt."""
+"""PDF'nin sohbet, extraction ve değerlendirme prompt'ları (RULES.md §2-5)."""
 
 DAILY_CHAT_SYSTEM = (
     "Sen Türkçe konuşan, samimi ve yardımsever bir sohbet asistanısın. "
@@ -7,12 +7,22 @@ DAILY_CHAT_SYSTEM = (
 
 CRITERIA_EXTRACTOR_SYSTEM = (
     "Sen bir işe alım kriteri ayrıştırıcısısın. Kullanıcının serbest metninden "
-    "1 ile 8 arasında değerlendirme kriteri çıkar. Her kriter için: kısa snake_case id, "
+    "kullanıcının tanımladığı tüm değerlendirme kriterlerini çıkar. Her kriter için: "
+    "kısa snake_case id, "
     "kullanıcı metninden birebir kopyalanmış kesintisiz etiket (label), kısa açıklama "
     "(description) ve "
     "CV'de aranacak ipuçları (evidenceHints) üret. Kullanıcının yazmadığı bir kriteri "
     "kendinden ekleme; label alanını yeniden ifade etme veya dilbilgisel olarak düzeltme. "
     "Sadece verilen JSON şemasına uyan çıktı üret."
+)
+
+CRITERIA_INTENT_SYSTEM = (
+    "Kullanıcı mesajının CV'lerin hangi ölçütlere göre değerlendirileceğini tanımlayıp "
+    "tanımlamadığını belirle. Mesaj değerlendirme ölçütü tanımlıyorsa intent='criteria' "
+    "döndür ve kullanıcının yazdığı tüm kriterleri çıkar; tanımlamıyorsa intent='chat' ve "
+    "boş criteria döndür. Kriter için kısa snake_case id, kullanıcı metninden birebir "
+    "kopyalanmış kesintisiz label, kısa description ve evidenceHints üret. Anahtar kelime "
+    "listesi kullanma, kullanıcının yazmadığı kriter ekleme ve sadece JSON şemasına uy."
 )
 
 CV_EXTRACTOR_SYSTEM = (

@@ -1,5 +1,5 @@
 """Ollama /api/chat adapter. Structured output için Pydantic JSON Schema kullanılır
-(prompt içine 'JSON döndür' yazmaktan daha güvenilir). Bkz. RULES.md §5.
+(prompt içine 'JSON döndür' yazmaktan daha güvenilir). Bkz. RULES.md §6.
 """
 from __future__ import annotations
 
@@ -41,8 +41,14 @@ class OllamaClient:
         except httpx.HTTPError as exc:
             logger.warning("Ollama isteği başarısız: %s", exc)
             raise LLMUnavailableError(str(exc)) from exc
-        data = resp.json()
-        return data["message"]["content"]
+        try:
+            content = resp.json()["message"]["content"]
+            if not isinstance(content, str):
+                raise TypeError("message.content metin değil")
+            return content
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning("Ollama geçersiz yanıt döndürdü: %s", exc)
+            raise LLMUnavailableError("Ollama geçerli bir yanıt döndürmedi.") from exc
 
     async def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
         """Serbest metin sohbet (Daily Chat modu) — şema yok."""

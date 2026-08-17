@@ -1,12 +1,12 @@
-"""Dinamik kriter tanımlama use-case (RULES.md §2, §5)."""
+"""Dinamik kriter tanımlama use-case (RULES.md §3)."""
 from __future__ import annotations
 
 import re
 
 from app.domain.errors import LLMOutputValidationError, NoCriteriaDefinedError
-from app.domain.models import CriteriaExtractionResult, Criterion
+from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.infrastructure.llm.ollama_client import OllamaClient
-from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
+from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
 from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
 
@@ -31,7 +31,23 @@ class CriteriaService:
             criteria = self._grounded_criteria(result.criteria, free_text)
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
-        await self._repo.set_criteria(chat_id, [c.model_dump() for c in criteria])
+        return await self._save(chat_id, criteria)
+
+    async def define_if_requested(
+        self, chat_id: int, free_text: str
+    ) -> list[Criterion] | None:
+        result = await self._llm.structured_chat(
+            CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult
+        )
+        if result.intent == "chat":
+            return None
+        criteria = self._grounded_criteria(result.criteria, free_text)
+        if not criteria:
+            return await self.define_criteria(chat_id, free_text)
+        return await self._save(chat_id, criteria)
+
+    async def _save(self, chat_id: int, criteria: list[Criterion]) -> list[Criterion]:
+        await self._repo.set_criteria(chat_id, [criterion.model_dump() for criterion in criteria])
         return criteria
 
     @staticmethod

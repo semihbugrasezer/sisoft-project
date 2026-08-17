@@ -1,7 +1,10 @@
 import pytest
 
 from app.application.criteria_service import CriteriaService
-from app.domain.models import CriteriaExtractionResult, Criterion
+from pydantic import ValidationError
+
+from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
+from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
 
 
 class FakeLLM:
@@ -51,3 +54,51 @@ def test_keeps_semantic_label_but_drops_unrelated_extra_criterion():
 def test_keeps_short_or_symbolic_exact_criterion():
     criteria = [Criterion(id="cpp", label="C++", description="x")]
     assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
+
+
+def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
+    result = CriteriaExtractionResult(
+        criteria=[
+            Criterion(id=f"criterion_{index}", label=f"Kriter {index}", description="x")
+            for index in range(9)
+        ]
+    )
+    assert len(result.criteria) == 9
+    assert "1 ile 8" not in CRITERIA_EXTRACTOR_SYSTEM
+
+
+@pytest.mark.asyncio
+async def test_free_text_without_keyword_can_define_criteria():
+    class IntentLLM:
+        async def structured_chat(self, system, user, response_model):
+            assert response_model is CriteriaIntentResult
+            return CriteriaIntentResult(
+                intent="criteria",
+                criteria=[
+                    Criterion(
+                        id="react",
+                        label="React tecrübesi",
+                        description="React deneyimi",
+                    )
+                ],
+            )
+
+    repo = FakeRepo()
+    criteria = await CriteriaService(IntentLLM(), repo).define_if_requested(
+        1, "React tecrübesi benim için önemli"
+    )
+
+    assert [criterion.label for criterion in criteria] == ["React tecrübesi"]
+    assert repo.saved[0]["id"] == "react"
+
+
+def test_blank_or_duplicate_criteria_are_rejected():
+    with pytest.raises(ValidationError):
+        Criterion(id=" ", label="React", description="x")
+    with pytest.raises(ValidationError):
+        CriteriaExtractionResult(
+            criteria=[
+                Criterion(id="react", label="React", description="x"),
+                Criterion(id="react", label="Clean Code", description="x"),
+            ]
+        )
