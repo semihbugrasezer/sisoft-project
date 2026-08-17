@@ -31,8 +31,8 @@ def build_container(config: Config) -> Container:
         config=config,
         llm=llm,
         repo=repo,
-        chat_service=ChatService(llm, repo, config.history_limit),
+        chat_service=ChatService(llm, repo),
         criteria_service=CriteriaService(llm, repo),
         cv_service=cv_service,
-        batch_service=BatchAnalysisService(cv_service, max_concurrency=2),
+        batch_service=BatchAnalysisService(cv_service),
     )

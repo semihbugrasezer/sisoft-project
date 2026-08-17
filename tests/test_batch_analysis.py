@@ -1,11 +1,15 @@
-"""BatchAnalysisService'in fail-fast validation ve partial-LLM-failure izolasyonu.
-Gerçek Ollama/PDF yok — CVAnalysisService arayüzü (extract_text/analyze_from_text)
-sahte (fake) bir implementasyonla değiştirilir."""
+"""BatchAnalysisService'in validation, limit ve top-3 sözleşmesi."""
 import pytest
 
 from app.application.batch_analysis_service import BatchAnalysisService
 from app.domain.errors import LLMOutputValidationError, PDFValidationError
-from app.domain.models import CandidateProfile, Criterion, CriterionScore, EvaluationResult
+from app.domain.models import (
+    MAX_CV_COUNT,
+    CandidateProfile,
+    Criterion,
+    CriterionScore,
+    EvaluationResult,
+)
 
 CRITERIA = [Criterion(id="react", label="React", description="React deneyimi")]
 
@@ -22,29 +26,39 @@ class FakeCVService:
             raise PDFValidationError(f"{filename} bozuk.")
         return f"text-of-{filename}"
 
-    async def analyze_from_text(self, text: str, criteria):
-        filename = text.replace("text-of-", "")
-        if self.behaviors[filename] == "llm_fail":
+    async def analyze_batch_from_texts(self, texts: list[str], criteria):
+        filenames = [text.replace("text-of-", "") for text in texts]
+        if any(self.behaviors[filename] == "llm_fail" for filename in filenames):
             raise LLMOutputValidationError("şema hatası")
-        profile = CandidateProfile(
-            candidateName=filename,
-            contact={},
-            summary=None,
-            skills=[],
-            workExperiences=[],
-            education=[],
-            languages=[],
-        )
-        evaluation = EvaluationResult(
-            scores=[
-                CriterionScore(
-                    criterionId="react", criterionLabel="React", score=80,
-                    evidence=["x"], reason="x",
-                )
-            ],
-            strengths=["x"], weaknesses=[], recommendations=[], hrEvaluation="iyi",
-        )
-        return profile, evaluation
+        return [
+            (
+                CandidateProfile(
+                    candidateName=filename,
+                    contact={},
+                    summary=None,
+                    skills=[],
+                    workExperiences=[],
+                    education=[],
+                    languages=[],
+                ),
+                EvaluationResult(
+                    scores=[
+                        CriterionScore(
+                            criterionId="react",
+                            criterionLabel="React",
+                            score=80,
+                            evidence=["x"],
+                            reason="x",
+                        )
+                    ],
+                    strengths=["x"],
+                    weaknesses=[],
+                    recommendations=[],
+                    hrEvaluation="iyi",
+                ),
+            )
+            for filename in filenames
+        ]
 
 
 def _files(names: list[str]) -> list[tuple[str, bytes]]:
@@ -61,14 +75,20 @@ async def test_one_invalid_pdf_aborts_whole_batch():
 
 
 @pytest.mark.asyncio
-async def test_llm_failure_is_isolated_not_batch_wide():
+async def test_more_than_five_cvs_is_rejected_before_processing():
+    names = [f"{index}.pdf" for index in range(MAX_CV_COUNT + 1)]
+    service = BatchAnalysisService(FakeCVService({name: "ok" for name in names}))
+
+    with pytest.raises(PDFValidationError, match="En fazla 5 CV"):
+        await service.analyze_batch(_files(names), CRITERIA)
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_aborts_batch_instead_of_returning_incomplete_ranking():
     behaviors = {"a.pdf": "ok", "b.pdf": "llm_fail", "c.pdf": "ok"}
     service = BatchAnalysisService(FakeCVService(behaviors))
-    result = await service.analyze_batch(_files(list(behaviors)), CRITERIA)
-
-    assert result.response.processedCVCount == 2
-    assert [name for name, _ in result.failed] == ["b.pdf"]
-    assert {c.pdfFileName for c in result.response.topCandidates} == {"a.pdf", "c.pdf"}
+    with pytest.raises(LLMOutputValidationError):
+        await service.analyze_batch(_files(list(behaviors)), CRITERIA)
 
 
 @pytest.mark.asyncio
@@ -77,6 +97,17 @@ async def test_all_valid_produces_success_status():
     service = BatchAnalysisService(FakeCVService(behaviors))
     result = await service.analyze_batch(_files(list(behaviors)), CRITERIA)
 
-    assert result.response.status == "success"
-    assert result.response.processedCVCount == 2
-    assert not result.failed
+    assert result.status == "success"
+    assert result.processedCVCount == 2
+
+
+@pytest.mark.asyncio
+async def test_five_cvs_produce_only_top_three_candidates():
+    names = [f"{index}.pdf" for index in range(MAX_CV_COUNT)]
+    service = BatchAnalysisService(FakeCVService({name: "ok" for name in names}))
+
+    result = await service.analyze_batch(_files(names), CRITERIA)
+
+    assert result.processedCVCount == 5
+    assert len(result.topCandidates) == 3
+    assert [candidate.rank for candidate in result.topCandidates] == [1, 2, 3]

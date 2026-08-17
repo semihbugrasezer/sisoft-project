@@ -2,6 +2,7 @@ import pytest
 
 from app.application.criteria_service import CriteriaService
 from app.domain.models import CriteriaExtractionResult, Criterion
+from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
 
 
 class FakeLLM:
@@ -51,3 +52,14 @@ def test_keeps_semantic_label_but_drops_unrelated_extra_criterion():
 def test_keeps_short_or_symbolic_exact_criterion():
     criteria = [Criterion(id="cpp", label="C++", description="x")]
     assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
+
+
+def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
+    result = CriteriaExtractionResult(
+        criteria=[
+            Criterion(id=f"criterion_{index}", label=f"Kriter {index}", description="x")
+            for index in range(9)
+        ]
+    )
+    assert len(result.criteria) == 9
+    assert "1 ile 8" not in CRITERIA_EXTRACTOR_SYSTEM

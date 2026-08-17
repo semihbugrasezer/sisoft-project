@@ -1,5 +1,5 @@
-"""Ortalama ve sıralama — LLM'den bağımsız saf fonksiyonlar.
-Ortalama LLM'e yaptırılmaz (bkz. RULES.md §7): kanıtlanabilir, testable, deterministik olsun.
+"""Ortalama ve sıralama — LLM'den bağımsız saf fonksiyonlar (RULES.md §5).
+Ortalama backend'de hesaplanır: kanıtlanabilir ve deterministik olsun.
 """
 from __future__ import annotations
 

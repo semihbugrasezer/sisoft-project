@@ -1,4 +1,4 @@
-"""PDF doğrulama + metin çıkarma. Sıra RULES.md §8'de tanımlı."""
+"""PDF doğrulama + metin çıkarma (RULES.md §4)."""
 from __future__ import annotations
 
 import pymupdf as fitz

@@ -1,4 +1,4 @@
-"""Chat history + aktif kriter + pending CV kuyruğu. chat_id ile ayrıştırılır (RULES.md §9).
+"""Chat history + aktif kriter + pending CV kuyruğu. chat_id ile ayrıştırılır.
 sqlite3 blocking olduğu için her genel metot asyncio.to_thread ile çalıştırılır."""
 from __future__ import annotations
 
@@ -51,17 +51,17 @@ class SQLiteRepo:
         )
         self._conn.commit()
 
-    async def get_recent_messages(self, chat_id: int, limit: int) -> list[dict]:
+    async def get_messages(self, chat_id: int) -> list[dict]:
         async with self._lock:
-            rows = await asyncio.to_thread(self._get_recent_messages_sync, chat_id, limit)
+            rows = await asyncio.to_thread(self._get_messages_sync, chat_id)
         return [{"role": role, "content": content} for role, content in rows]
 
-    def _get_recent_messages_sync(self, chat_id: int, limit: int) -> list[tuple]:
+    def _get_messages_sync(self, chat_id: int) -> list[tuple]:
         cur = self._conn.execute(
-            "SELECT role, content FROM chat_history WHERE chat_id = ? ORDER BY ts DESC LIMIT ?",
-            (chat_id, limit),
+            "SELECT role, content FROM chat_history WHERE chat_id = ? ORDER BY ts",
+            (chat_id,),
         )
-        return list(reversed(cur.fetchall()))
+        return cur.fetchall()
 
     async def clear_history(self, chat_id: int) -> None:
         async with self._lock:

@@ -53,10 +53,11 @@ python scripts/generate_mock_cvs.py   # mock_cvs/ altına 5 örnek CV yazar
    `/batch` → PDF'ler → `/analyze` yedek akışını kullan)
 7. Batch işlenirken başka bir sohbetten mesaj gönder → bot kilitlenmeden yanıt verir
 
-## Mimari
+## Gereksinimler ve mimari
 
-Bkz. `RULES.md` §3 (katmanlı mimari diyagramı ve klasör yapısı) ve §5 (3 ayrı
-yapılandırılmış LLM çağrısı: CriteriaExtractor / CVExtractor / CandidateEvaluator).
+PDF ile birebir proje gereksinimleri için [`RULES.md`](./RULES.md) dosyasına bakın.
+Uygulama, bu gereksinimleri katmanlı mimari ve üç ayrı yapılandırılmış LLM çağrısıyla
+(CriteriaExtractor / CVExtractor / CandidateEvaluator) gerçekleştirir.
 
 AI araçlarıyla geliştirme süreci ve promptlar için [`AI_USAGE.md`](./AI_USAGE.md).
 
@@ -64,6 +65,6 @@ AI araçlarıyla geliştirme süreci ve promptlar için [`AI_USAGE.md`](./AI_USA
 
 - Taranmış (görsel) PDF desteklenmiyor — OCR kapsam dışı, net hata döner.
 - Kriter ağırlıklandırma yok, tüm kriterler eşit ağırlıklı.
-- Tek Ollama modeli/tek instance — yüksek eşzamanlı yük için tasarlanmadı
-  (`asyncio.Semaphore(2)` ile kasıtlı sınırlı).
+- Tek Ollama modeli/tek instance — yüksek eşzamanlı yük için tasarlanmadı; 5 CV batch'i
+  bir extraction ve bir evaluation çağrısıyla işlenir.
 - SQLite tek dosya — çoklu process/yatay ölçekleme için uygun değil (kapsam dışı).

@@ -1,4 +1,4 @@
-"""Ortam değişkenlerini tek yerden okur. Bkz. RULES.md §2."""
+"""Ortam değişkenlerini tek yerden okur."""
 import os
 from dataclasses import dataclass
 
@@ -13,8 +13,6 @@ class Config:
     ollama_base_url: str
     ollama_model: str
     db_path: str
-    max_cv_count: int
-    history_limit: int
     llm_timeout: float
 
 
@@ -30,7 +28,5 @@ def load_config() -> Config:
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
         db_path=os.getenv("DB_PATH", "sisoft.db"),
-        max_cv_count=int(os.getenv("MAX_CV_COUNT", "5")),
-        history_limit=int(os.getenv("HISTORY_LIMIT", "12")),
-        llm_timeout=float(os.getenv("LLM_TIMEOUT", "120")),
+        llm_timeout=float(os.getenv("LLM_TIMEOUT", "600")),
     )

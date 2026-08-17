@@ -1,7 +1,9 @@
-"""Domain şemaları. LLM çıktıları bu Pydantic modellerine zorlanır (bkz. RULES.md §5-7)."""
+"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (RULES.md §3-5)."""
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+
+MAX_CV_COUNT = 5
 
 
 # --- Kriter (CriteriaExtractor çıktısı) ---------------------------------
@@ -14,7 +16,7 @@ class Criterion(BaseModel):
 
 
 class CriteriaExtractionResult(BaseModel):
-    criteria: list[Criterion] = Field(min_length=1, max_length=8)
+    criteria: list[Criterion] = Field(min_length=1)
 
 
 # --- CV profili (CVExtractor çıktısı) -----------------------------------
@@ -55,6 +57,15 @@ class CandidateProfile(BaseModel):
     languages: list[Language]
 
 
+class BatchProfileItem(BaseModel):
+    documentId: int
+    profile: CandidateProfile
+
+
+class BatchProfileResult(BaseModel):
+    candidates: list[BatchProfileItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
+
+
 # --- Değerlendirme (CandidateEvaluator çıktısı) -------------------------
 
 class CriterionScore(BaseModel):
@@ -74,6 +85,20 @@ class EvaluationResult(BaseModel):
     weaknesses: list[str]
     recommendations: list[str]
     hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
+
+
+class BatchCandidateEvaluation(BaseModel):
+    scores: list[CriterionScore]
+    hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
+
+
+class BatchEvaluationItem(BaseModel):
+    documentId: int
+    evaluation: BatchCandidateEvaluation
+
+
+class BatchEvaluationResult(BaseModel):
+    candidates: list[BatchEvaluationItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
 
 
 # --- Çoklu CV nihai çıktı — ödev PDF §4 şemasıyla birebir ----------------
