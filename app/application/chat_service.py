@@ -1,4 +1,4 @@
-"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (RULES.md §2)."""
+"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (README.md §2)."""
 from __future__ import annotations
 
 import asyncio

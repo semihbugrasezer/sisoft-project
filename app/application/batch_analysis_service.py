@@ -1,4 +1,4 @@
-"""Çoklu CV akışı (RULES.md §5).
+"""Çoklu CV akışı (README.md §5).
 
 İki aşamalı hata politikası:
 1. Validation aşaması fail-fast'tir: herhangi bir dosya bozuk/şifreli/okunamazsa

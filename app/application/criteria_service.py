@@ -1,4 +1,4 @@
-"""Dinamik kriter tanımlama use-case (RULES.md §3)."""
+"""Dinamik kriter tanımlama use-case (README.md §3)."""
 from __future__ import annotations
 
 import re
