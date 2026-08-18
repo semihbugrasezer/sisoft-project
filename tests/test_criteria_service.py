@@ -11,7 +11,7 @@ class FakeLLM:
     def __init__(self):
         self.calls = 0
 
-    async def structured_chat(self, system, user, response_model):
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
         self.calls += 1
         label = "Proje yönetimi" if self.calls == 1 else "React tecrübesi"
         return CriteriaExtractionResult(
@@ -70,7 +70,7 @@ def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
 @pytest.mark.asyncio
 async def test_free_text_without_keyword_can_define_criteria():
     class IntentLLM:
-        async def structured_chat(self, system, user, response_model):
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
             assert response_model is CriteriaIntentResult
             return CriteriaIntentResult(
                 intent="criteria",
@@ -90,6 +90,43 @@ async def test_free_text_without_keyword_can_define_criteria():
 
     assert [criterion.label for criterion in criteria] == ["React tecrübesi"]
     assert repo.saved[0]["id"] == "react"
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_uses_configured_intent_model():
+    class IntentModelSpyLLM:
+        def __init__(self):
+            self.seen_models: list[str | None] = []
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.seen_models.append(model)
+            return CriteriaIntentResult(intent="chat", criteria=[])
+
+    llm = IntentModelSpyLLM()
+    service = CriteriaService(llm, FakeRepo(), intent_model="qwen2.5:1.5b")
+
+    result = await service.define_if_requested(1, "bugün nasılsın?")
+
+    assert result is None
+    assert llm.seen_models == ["qwen2.5:1.5b"]
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_defaults_to_main_model_when_unconfigured():
+    class IntentModelSpyLLM:
+        def __init__(self):
+            self.seen_models: list[str | None] = []
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.seen_models.append(model)
+            return CriteriaIntentResult(intent="chat", criteria=[])
+
+    llm = IntentModelSpyLLM()
+    service = CriteriaService(llm, FakeRepo())  # intent_model verilmedi
+
+    await service.define_if_requested(1, "bugün nasılsın?")
+
+    assert llm.seen_models == [None]  # OllamaClient bunu ana modele düşürür
 
 
 def test_blank_or_duplicate_criteria_are_rejected():

@@ -12,6 +12,7 @@ class Config:
     telegram_token: str
     ollama_base_url: str
     ollama_model: str
+    ollama_intent_model: str | None
     db_path: str
     llm_timeout: float
 
@@ -27,6 +28,10 @@ def load_config() -> Config:
         telegram_token=token,
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+        # İsteğe bağlı: her sohbet mesajında çalışan intent-classifier (kriter mi/sohbet
+        # mi) için daha küçük/hızlı bir model, örn. "qwen2.5:1.5b". Boşsa ana model
+        # kullanılır — davranış değişmez, yalnızca opt-in hızlanma.
+        ollama_intent_model=os.getenv("OLLAMA_INTENT_MODEL") or None,
         db_path=os.getenv("DB_PATH", "sisoft.db"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT", "600")),
     )

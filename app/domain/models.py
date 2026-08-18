@@ -11,6 +11,8 @@ MAX_CV_COUNT = 5
 # --- Kriter (CriteriaExtractor çıktısı) ---------------------------------
 
 class Criterion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(description="snake_case kısa kimlik, örn. react_experience")
     label: str = Field(description="kullanıcının kullandığı orijinal kriter adı")
     description: str
@@ -53,12 +55,16 @@ class CriteriaIntentResult(BaseModel):
 # --- CV profili (CVExtractor çıktısı) -----------------------------------
 
 class Contact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: str | None = None
     phone: str | None = None
     location: str | None = None
 
 
 class WorkExperience(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     company: str | None = None
     title: str | None = None
     startDate: str | None = None
@@ -67,6 +73,8 @@ class WorkExperience(BaseModel):
 
 
 class Education(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     institution: str | None = None
     degree: str | None = None
     field: str | None = None
@@ -74,11 +82,19 @@ class Education(BaseModel):
 
 
 class Language(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     level: str | None = None
 
 
 class CandidateProfile(BaseModel):
+    """PDF'in ortak profil şemasıyla birebir. `extra="forbid"`: LLM extraction'ın
+    şema dışına taşmadığını (uydurma alan üretmediğini) garanti eder — extraction
+    kalitesi rubric'te doğrudan ölçülüyor (README.md §8)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     candidateName: str | None
     contact: Contact
     summary: str | None
@@ -99,7 +115,19 @@ class BatchProfileResult(BaseModel):
 
 # --- Değerlendirme (CandidateEvaluator çıktısı) -------------------------
 
+# Prompt "kanıt yoksa evidence'a tek eleman olarak 'Kanıt yok' yaz, düşük puan ver"
+# diyor (CANDIDATE_EVALUATOR_SYSTEM) ama bu yalnızca prompt seviyesinde bir kural —
+# model_config alanları ve Field(min_length=1) tek başına "score=95, evidence=['Kanıt
+# yok']" gibi teknik olarak şemaya uyan ama semantik olarak tutarsız bir çıktıyı
+# engellemez. Aşağıdaki validator bunu reddeder; ValidationError, OllamaClient.
+# structured_chat'in zaten sahip olduğu tek-seferlik şema-düzeltme retry'ını tetikler
+# (ayrı bir retry mekanizması eklemeye gerek yok).
+_NO_EVIDENCE_MARKERS = {"kanıt yok", "kanit yok", "no evidence", "yok", "-"}
+
+
 class CriterionScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     criterionId: str
     criterionLabel: str
     score: int = Field(ge=0, le=100)
@@ -109,8 +137,22 @@ class CriterionScore(BaseModel):
     )
     reason: str
 
+    @model_validator(mode="after")
+    def require_real_evidence_for_high_score(self):
+        has_real_evidence = any(
+            item.strip().casefold() not in _NO_EVIDENCE_MARKERS for item in self.evidence
+        )
+        if self.score >= 20 and not has_real_evidence:
+            raise ValueError(
+                f"score={self.score} (>= 20) ama evidence yalnızca 'kanıt yok' türünden "
+                "placeholder içeriyor — kanıtsız yüksek puan kabul edilmez."
+            )
+        return self
+
 
 class EvaluationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     scores: list[CriterionScore]
     strengths: list[str]
     weaknesses: list[str]
@@ -119,6 +161,8 @@ class EvaluationResult(BaseModel):
 
 
 class BatchCandidateEvaluation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     scores: list[CriterionScore]
     hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
 

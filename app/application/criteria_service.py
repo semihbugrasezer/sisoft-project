@@ -9,11 +9,25 @@ from app.infrastructure.llm.ollama_client import OllamaClient
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
 from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
+# NOT: Burada bir anahtar-kelime heuristic'i ile intent-classifier LLM çağrısını
+# atlamayı denedik (düz sohbet mesajlarını hızlandırmak için) — ama
+# test_free_text_without_keyword_can_define_criteria'yı kırdı: PDF açıkça
+# "anahtar kelimesiz, tamamen serbest metinden kriter tanımlama" istiyor
+# ("React tecrübesi benim için önemli" gibi bir cümlede "kriter/değerlendir/skorla"
+# kelimesi geçmez ama kriter tanımıdır). Ucuz bir heuristic bunu güvenilir şekilde
+# ayıramaz — yanlış negatif = sessizce kriter kaybı, rubric'in tam ölçtüğü yer.
+# Çift-çağrı gecikmesi bu yüzden handler seviyesinde (asyncio.gather ile intent +
+# chat'i paralel başlatarak, doğruluktan taviz vermeden) ele alınıyor.
+
 
 class CriteriaService:
-    def __init__(self, llm: OllamaClient, repo: SQLiteRepo):
+    def __init__(self, llm: OllamaClient, repo: SQLiteRepo, intent_model: str | None = None):
         self._llm = llm
         self._repo = repo
+        # Yalnız intent sınıflandırması (kriter mi/sohbet mi — ikili, basit görev) bu
+        # modeli kullanır; asıl kriter çıkarımı (define_criteria) her zaman ana modelde
+        # kalır çünkü daha karmaşık ve doğruluğu daha kritik.
+        self._intent_model = intent_model
 
     async def define_criteria(self, chat_id: int, free_text: str) -> list[Criterion]:
         result = await self._llm.structured_chat(
@@ -37,7 +51,7 @@ class CriteriaService:
         self, chat_id: int, free_text: str
     ) -> list[Criterion] | None:
         result = await self._llm.structured_chat(
-            CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult
+            CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult, model=self._intent_model
         )
         if result.intent == "chat":
             return None

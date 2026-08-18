@@ -32,7 +32,7 @@ def build_container(config: Config) -> Container:
         llm=llm,
         repo=repo,
         chat_service=ChatService(llm, repo),
-        criteria_service=CriteriaService(llm, repo),
+        criteria_service=CriteriaService(llm, repo, intent_model=config.ollama_intent_model),
         cv_service=cv_service,
         batch_service=BatchAnalysisService(cv_service),
     )

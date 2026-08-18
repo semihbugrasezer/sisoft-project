@@ -71,9 +71,10 @@ Mock CV üretimi: `python scripts/generate_mock_cvs.py` — `mock_cvs/` altına 
 **Tekli CV** (Markdown, `formatter.format_single_analysis`): kriter bazlı skorlar,
 *Güçlü Yönler*, *Zayıf Yönler*, *Gelişim Tavsiyeleri*, tek cümlelik genel değerlendirme.
 
-**Çoklu CV (top-3)**: alan adları PDF'teki şemayla (§6.4 aşağıda) birebir. Aşağıdaki
-örnek mock veri değil — gerçek yerel `qwen2.5:7b` sunucusuna karşı 5 mock CV ile canlı
-çalıştırılıp yakalanmış ham çıktının ilk iki adayıdır (3. canlı koşu, bkz. §8):
+**Çoklu CV (top-3)**: alan adları PDF'teki şemayla ([§5](#gereksinimler-pdf-ile-birebir)
+aşağıda) birebir. Aşağıdaki örnek mock veri değil — gerçek yerel `qwen2.5:7b` sunucusuna
+karşı 5 mock CV ile canlı çalıştırılıp yakalanmış ham çıktının ilk iki adayıdır (3. canlı
+koşu, bkz. [Canlı doğrulama](#canlı-doğrulama)):
 
 ```json
 {
@@ -106,7 +107,7 @@ Pydantic modeli `extra="forbid"` ile buna kilitli, fazladan alan eklenirse valid
 hatası fırlatır (`app/domain/models.py`). `hrEvaluation` ilk canlı koşuda İngilizce
 dönmüştü (Türkçe sohbet botu için beklenmiyor); 3 iterasyonluk bir prompt düzeltmesiyle
 çözüldü ve regex tabanlı otomatik kontrolle ("candidate" kelimesi / karışık alfabe
-sızıntısı yok) canlı doğrulandı — bkz. §8.
+sızıntısı yok) canlı doğrulandı — bkz. [Canlı doğrulama](#canlı-doğrulama).
 
 ## Gereksinimler (PDF ile birebir)
 
@@ -199,7 +200,7 @@ PDF'in kendi örnek şeması (ödev dokümanından birebir, gerçek çıktı iç
 
 ### §7 Vibe Coding ve ileri seviye AI araçları
 
-Kodun tamamı Claude Code ve Codex ile üretildi; AI süreci ve promptlar için bkz. §7
+Kodun tamamı Claude Code ve Codex ile üretildi; AI süreci ve promptlar için bkz.
 [Mimari kararları ve gerekçeleri](#mimari-kararları-ve-gerekçeleri).
 
 ### §8 Değerlendirme kriterleri (PDF'in kendi rubric'i)
@@ -214,9 +215,9 @@ Kodun tamamı Claude Code ve Codex ile üretildi; AI süreci ve promptlar için 
 
 ### §9 Teslim kabul listesi
 
-Durum: uygulandı ve doğrulandı — hem `pytest tests/ -v` (46 passed, mock LLM) hem de
+Durum: uygulandı ve doğrulandı — hem `pytest tests/ -v` (55 passed, mock LLM) hem de
 gerçek yerel `qwen2.5:7b` sunucusuna karşı 3 ayrı canlı uçtan uca çalıştırma ile
-(bkz. §8 [Canlı doğrulama](#canlı-doğrulama)). Bulunan her sorun aynı bölümde kayıtlı,
+(bkz. [Canlı doğrulama](#canlı-doğrulama)). Bulunan her sorun aynı bölümde kayıtlı,
 düzeltilip yeniden canlı doğrulanmıştır.
 
 - [x] Günlük sohbet mantıklı ve akıcı çalışıyor. — `chat_service.py`
@@ -238,8 +239,8 @@ düzeltilip yeniden canlı doğrulanmıştır.
 | Madde | Sapma | Durum |
 |---|---|---|
 | Kriter label'ı | Model bazen küçük eş anlamlı sapmayla döner ("tecrübesi"→"deneyimi"). `_grounded_criteria` konu değişmediği sürece kabul eder — kasıtlı tasarım (bkz. `test_keeps_semantic_label_but_drops_unrelated_extra_criterion`). Garanti "birebir kopya" değil, "kullanıcının konusuna sadık" seviyesindedir. | Kasıtlı, değiştirilmedi |
-| Batch süresi | PDF "hızlıca işlenmelidir" diyor; 5 CV batch adımı 3 canlı ölçümde tutarlı olarak ~8-10 dk sürdü. Mimari doğru; darboğaz donanım/model. | Kasıtlı, kapsam dışı bırakıldı — bkz. §8 |
-| `hrEvaluation` dili | İlk canlı koşuda İngilizce döndü, 2. koşuda "candidate" kelimesi karışık alfabeyle bozuk sızdı. | 3. koşuda düzeltildi, regex ile canlı doğrulandı — bkz. §8 |
+| Batch süresi | PDF "hızlıca işlenmelidir" diyor; 5 CV batch adımı 3 canlı ölçümde tutarlı olarak ~8-10 dk sürdü. Mimari doğru; darboğaz donanım/model. | Kasıtlı, kapsam dışı bırakıldı — bkz. [Canlı doğrulama](#canlı-doğrulama) |
+| `hrEvaluation` dili | İlk canlı koşuda İngilizce döndü, 2. koşuda "candidate" kelimesi karışık alfabeyle bozuk sızdı. | 3. koşuda düzeltildi, regex ile canlı doğrulandı — bkz. [Canlı doğrulama](#canlı-doğrulama) |
 
 ## Mimari kararları ve gerekçeleri
 
@@ -295,7 +296,7 @@ mesajı ürettiği.
 
 | # | Koşu | Süre (batch) | Bulgu | Aksiyon |
 |---|---|---|---|---|
-| 1 | tam akış (kriter+tekli+batch) | 580s | Kriter label'ı parafraz edildi: "React tecrübesi" → "React deneyimi". `_grounded_criteria` konu değişmediği için kabul etti (kasıtlı tasarım, bkz. §6/§9). `hrEvaluation` tamamen İngilizce döndü. | `CRITERIA_EXTRACTOR_SYSTEM`'daki "birebir" ifadesi yumuşatıldı; `CANDIDATE_EVALUATOR_SYSTEM`'a "çıktı Türkçe olsun" talimatı eklendi |
+| 1 | tam akış (kriter+tekli+batch) | 580s | Kriter label'ı parafraz edildi: "React tecrübesi" → "React deneyimi". `_grounded_criteria` konu değişmediği için kabul etti (kasıtlı tasarım, bkz. §9 "Bilinen sapmalar"). `hrEvaluation` tamamen İngilizce döndü. | `CRITERIA_EXTRACTOR_SYSTEM`'daki "birebir" ifadesi yumuşatıldı; `CANDIDATE_EVALUATOR_SYSTEM`'a "çıktı Türkçe olsun" talimatı eklendi |
 | 2 | yalnız batch (Türkçe-fix testi) | 463.5s | Cümle yapısı Türkçeye döndü ama `"candıdate"` kelimesi kaldı — düz İngilizce bile değil, karışık alfabeli (Kiril görünümlü harfler) bozuk kelime | Prompt'a "'candidate' yerine 'aday' de, karışık alfabeyle bozuk kelime üretme" eklendi (2. iterasyon) |
 | 3 | yalnız batch (candidate-fix testi) | 476.7s | Regex ile otomatik ölçüldü (Kiril script + `\bcandidate\b`): 3 adayda da `mixed_script=False`, `english_leak=False` | **Temiz** — örnek: *"Bu aday, React deneyimine sahip ve uzaktan çalışma uyumlu bir profesyoneldir..."* |
 
@@ -319,18 +320,38 @@ gecikme mimariden değil, tek yerel 7B modelin token-token JSON üretiminden gel
 Değiştirmeden değerlendirilecek somut seçenekler (hiçbiri bu teslimde uygulanmadı,
 kapsam dışı bırakıldı — mimari değişmeden takılabilir noktalar):
 
-1. **Üretim ortamı: vLLM veya bulut GPU** — yerel Apple Silicon yerine dedicated
-   GPU + vLLM'in continuous batching'i, aynı mimariyle (aynı `OllamaClient` arayüzü,
-   farklı `base_url`) süreyi kayda değer düşürür. Kod tarafında tek satır config
-   değişikliği (`config.py`'de `ollama_base_url`), mimari sıfır değişiklik ister.
-2. **Daha küçük/hızlı model** — `phi3.5` (bu makinede zaten kurulu) veya
-   `qwen2.5:3b` ile aynı akış, doğruluk/hız trade-off'u karşılığında dener; extraction
-   kalitesi düşebilir, canlı test edilmedi.
+1. **Üretim ortamı: vLLM veya bulut GPU** — yerel Apple Silicon yerine dedicated GPU +
+   vLLM'in continuous batching'i süreyi düşürür. **Düzeltme:** bu, tek satır
+   `base_url` değişikliği DEĞİL — vLLM'in OpenAI-uyumlu `/v1/chat/completions`
+   kontratı, `OllamaClient`'ın beklediği Ollama'ya özgü `/api/chat` payload/response
+   şeklinden farklı. Gerçek geçiş için aynı arayüzü (`chat`/`structured_chat`)
+   implemente eden ayrı bir `VLLMClient` adaptörü gerekir; `container.py` bunu tek
+   satırda değiştirilebilir kılacak şekilde zaten hazır, ama adaptörün kendisi
+   yazılmadı.
+2. **Daha küçük/hızlı model** — genel modeli `phi3.5` veya `qwen2.5:3b` ile
+   değiştirmek doğruluk/hız trade-off'u taşır, canlı test edilmedi. Ama **daha dar
+   kapsamlı bir versiyonu uygulandı ve test edildi**: intent-classification (kriter
+   mi/sohbet mi — basit ikili görev) artık isteğe bağlı ayrı bir model kullanabiliyor
+   (`OLLAMA_INTENT_MODEL` env değişkeni, `OllamaClient.structured_chat(..., model=...)`).
+   Boşsa davranış hiç değişmez; ayarlanırsa yalnızca günlük sohbetteki ilk
+   sınıflandırma çağrısı hızlanır, asıl extraction/evaluation ana modelde kalır —
+   bkz. `criteria_service.py`, `tests/test_criteria_service.py`.
 3. **Paralel per-CV çağrı** — şu anki "5 CV tek batch çağrıda" tasarımı yerine 5
    eşzamanlı `asyncio.gather` çağrısı; Ollama sunucusu gerçekten paralel işleyebiliyorsa
    (`OLLAMA_NUM_PARALLEL`) hızlanır, tek GPU'da seri işliyorsa fark etmez — mevcut
    2-çağrılı tasarım bilinçli tercih edildi çünkü önceki 10-çağrılı akış timeout riski
    taşıyordu (bkz. yukarıdaki "Mimari kararları" tablosu); bu geri adım riskli.
+
+**Denenip geri alınan bir yaklaşım** (mülakat savunması için gerçek bir örnek):
+günlük sohbette her mesajda çalışan intent-classification çağrısını (kriter mi/sohbet
+mi) anahtar-kelime heuristic'iyle atlamak denendi — "kriter/değerlendir/skorla" gibi
+kelimeler yoksa LLM'e hiç gitmeden "chat" varsayılsın. `pytest` hemen
+`test_free_text_without_keyword_can_define_criteria`'yı kırdı: PDF açıkça anahtar
+kelimesiz serbest metinden kriter tanımlamayı istiyor ("React tecrübesi benim için
+önemli" gibi bir cümlede tetikleyici kelime geçmez ama gerçek bir kriter tanımıdır).
+Heuristic geri alındı, kod incelemesi + test suit'i sorunu commit'lenmeden yakaladı —
+yukarıdaki `OLLAMA_INTENT_MODEL` çözümü bunun yerine geçti çünkü doğruluğa hiç
+dokunmuyor.
 
 Seçilmeyen sebep: teslim kapsamı sabit donanım/model üzerinde doğruluk ve mimari
 netliğini kanıtlamak; performans donanım değişkeni, kod değişkeni değil.
@@ -343,3 +364,21 @@ netliğini kanıtlamak; performans donanım değişkeni, kod değişkeni değil.
   bir extraction ve bir evaluation çağrısıyla işlenir (~8-10 dk, bkz. [Canlı
   doğrulama](#canlı-doğrulama)).
 - SQLite tek dosya — çoklu process/yatay ölçekleme için uygun değil (kapsam dışı).
+- PDF **sayfa sayısına** kasıtlı olarak limit yok — PDF ödevi bir üst sınır vermiyor,
+  okunabilir bir CV'yi keyfi bir sayfa limitiyle reddetmek yanlış olurdu (bkz.
+  `test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits`). Bunun yerine
+  operasyonel sınırlar var: Telegram indirme boyutu 15MB'da kesilir (`MAX_PDF_BYTES`,
+  `handlers.py`), LLM'e giden metin 20.000 karakterde kırpılır (`MAX_EXTRACTED_CHARS`,
+  `cv_analysis_service.py`) — PDF reddedilmez, yalnızca prompt/context taşması önlenir.
+- Sohbet geçmişi modele son 40 mesajla (`CHAT_HISTORY_LIMIT`) sınırlı — daha eskisi
+  DB'de durur ama prompt'a girmez. Rolling-summary (eski kısmın LLM özeti) yapılmadı;
+  kapsam dışı bırakıldı.
+- `/batch` kuyruğundaki PDF'ler ve sohbet geçmişi için TTL/otomatik silme yok — CV'ler
+  PII içerir, üretimde retention politikası eklenmeli (kapsam dışı, demo botu için
+  gerekli değil).
+- Telegram albümünde (media group) 5. dosyadan hemen sonra 6. bir update gelirse
+  (gecikmeli/duplicate network paketi gibi bir durumda) teorik olarak yeni bir buffer
+  açılıp ayrı bir analiz tetiklenebilir — `MediaGroupManager.pop()` atomik olduğu için
+  çift-sayım olmaz, ama bu geç gelen dosya için ayrı bir ikinci analiz riski var. Mock
+  CV demo senaryosunda (tek seferde 5 dosya seçilip gönderiliyor) gözlemlenmedi,
+  kapsam dışı bırakıldı.

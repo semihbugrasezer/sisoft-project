@@ -20,7 +20,7 @@ class FakeLLM:
         self.criterion_id = criterion_id
         self.prompts: list[str] = []
 
-    async def structured_chat(self, system, user, response_model):
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
         self.prompts.append(user)
         if response_model is CandidateProfile:
             return CandidateProfile(
@@ -93,7 +93,7 @@ class FakeBatchLLM:
     def __init__(self):
         self.prompts = []
 
-    async def structured_chat(self, system, user, response_model):
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
         self.prompts.append(user)
         if response_model is BatchProfileResult:
             return BatchProfileResult(
