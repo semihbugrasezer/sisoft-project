@@ -5,7 +5,7 @@ import re
 
 from app.domain.errors import LLMOutputValidationError, NoCriteriaDefinedError
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
-from app.infrastructure.llm.ollama_client import OllamaClient
+from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
 from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
@@ -25,7 +25,7 @@ from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
 
 class CriteriaService:
-    def __init__(self, llm: OllamaClient, repo: SQLiteRepo, intent_model: str | None = None):
+    def __init__(self, llm: LLMPort, repo: SQLiteRepo, intent_model: str | None = None):
         self._llm = llm
         self._repo = repo
         # Yalnız intent sınıflandırması (kriter mi/sohbet mi — ikili, basit görev) bu

@@ -20,7 +20,7 @@ from app.domain.models import (
     Criterion,
     EvaluationResult,
 )
-from app.infrastructure.llm.ollama_client import OllamaClient
+from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CANDIDATE_EVALUATOR_SYSTEM, CV_EXTRACTOR_SYSTEM
 from app.infrastructure.pdf.pymupdf_parser import validate_and_extract_text
 
@@ -35,7 +35,7 @@ MAX_EXTRACTED_CHARS = 20_000
 
 
 class CVAnalysisService:
-    def __init__(self, llm: OllamaClient):
+    def __init__(self, llm: LLMPort):
         self._llm = llm
 
     async def extract_text(self, pdf_bytes: bytes) -> str:

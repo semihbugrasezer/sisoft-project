@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.infrastructure.llm.ollama_client import OllamaClient
+from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CHAT_SUMMARIZER_SYSTEM, DAILY_CHAT_SYSTEM
 from app.infrastructure.persistence.sqlite_repo import CHAT_HISTORY_LIMIT, SQLiteRepo
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatService:
-    def __init__(self, llm: OllamaClient, repo: SQLiteRepo):
+    def __init__(self, llm: LLMPort, repo: SQLiteRepo):
         self._llm = llm
         self._repo = repo
         self._chat_locks: dict[int, asyncio.Lock] = {}

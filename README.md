@@ -10,7 +10,7 @@ tanımlanan dinamik kriterlere göre çalışan bir CV analiz hattı. CV analiz 
 PDF metnini doğrudan skorlamaz. Önce metni LLM Extraction ile ortak bir JSON şemasına
 çevirir; puanlama ve filtreleme bu şema üzerinden yürür.
 
-Doğruluk iki kanıt katmanına dayanır: 61 birim/entegrasyon testi (taklit LLM
+Doğruluk iki kanıt katmanına dayanır: 63 birim/entegrasyon testi (taklit LLM
 istemcileriyle) ve gerçek yerel model sunucusuna karşı dört ayrı canlı çalıştırma
 (bkz. [Deneysel Doğrulama](#deneysel-doğrulama)). Bu çalıştırmalarda üç gerçek hata
 bulundu: bir dil sızıntısı, bir sıralama hatası, bir yarış koşulu. Üçü de kök
@@ -28,7 +28,6 @@ Bu bir kod kusuru değildir; kısıtlı JSON üretiminin donanım maliyetidir ve
 5. [Çıktı Formatı](#çıktı-formatı)
 6. [Tasarım Kararları](#tasarım-kararları)
 7. [Deneysel Doğrulama](#deneysel-doğrulama)
-8. [Bilinen Sınırlamalar](#bilinen-sınırlamalar)
 
 ## Hızlı Başlangıç
 
@@ -54,7 +53,7 @@ python main.py
 Test paketi ve mock CV üretimi:
 
 ```bash
-python -m pytest tests/ -v                  # 61 test
+python -m pytest tests/ -v                  # 63 test
 python scripts/generate_mock_cvs.py         # mock_cvs/ altına 5 örnek CV yazar
 ```
 
@@ -104,9 +103,19 @@ serviste kalır; handler yalnızca yönlendirir.
 ## Nasıl Çalışıyor
 
 Bot iki işlevi yürütür: bağlamı koruyan genel sohbet, ve konuşma içinde tanımlanan
-dinamik kriterlere göre CV analizi. Aşağıdaki bölümler her işlevin ne yaptığını ve
-nasıl çalıştığını açıklar. Sistem arka planda yerel bir dil modeliyle çalışır; bu
-projede Ollama (`qwen2.5:7b`).
+dinamik kriterlere göre CV analizi. Sistem arka planda yerel bir dil modeliyle
+çalışır; bu projede Ollama (`qwen2.5:7b`).
+
+Her iki işlev de aynı iki adımlı örüntüyü izler: önce bir sınıflandırma veya
+doğrulama adımı, sonra asıl LLM işi. Bir sohbet mesajı geldiğinde sistem önce
+mesajın kriter tanımı mı yoksa sıradan sohbet mi olduğunu bir LLM çağrısıyla
+belirler; kriter ise çıkarılıp kaydedilir, sohbet ise geçmiş ve özetle birlikte
+modele gönderilir ve yanıt geçmişe eklenir. Bir CV geldiğinde sistem önce dosyayı
+doğrular (imza, şifre, sayfa varlığı, okunabilir metin); geçerliyse ham metin LLM
+Extraction ile ortak bir JSON profiline çevrilir, ardından bu profil kriterlere göre
+puanlanır. Tekli gönderimde sonuç bir Markdown rapora, çoklu gönderimde backend'de
+hesaplanan bir top-3 sıralamasına dönüşür. Aşağıdaki bölümler her adımın ayrıntısını
+açıklar.
 
 ### Sohbet ve Bağlam Yönetimi
 
@@ -198,8 +207,25 @@ Beklenen çıktı şeması (gerçek canlı örnek için bkz. [Çıktı Formatı]
 Backend Python ile yazıldı. Katmanlı mimari prensiplerine uyar (`domain /
 application / infrastructure / presentation`). Telegram entegrasyonu Long Polling
 üzerinden çalışır (`python-telegram-bot`, `application.run_polling`) ve kilitlenmez.
-LLM motoru Ollama'dır (`qwen2.5:7b`); iletişim `httpx.AsyncClient` üzerinden
-`/api/chat` uç noktasıyla kurulur.
+
+LLM motoru varsayılan olarak Ollama'dır (`qwen2.5:7b`); iletişim
+`httpx.AsyncClient` üzerinden `/api/chat` uç noktasıyla kurulur. Sistem tek bir
+motora kilitli değildir: `LLM_BACKEND=openai_compatible` ayarlanırsa
+`OpenAICompatibleClient` devreye girer ve `/v1/chat/completions` üzerinden LM
+Studio, vLLM veya Ollama'nın kendi OpenAI-uyumlu ucuyla konuşur. Her iki istemci
+de aynı `LLMPort` arayüzünü sağlar (`app/domain/ports.py`); application servisleri
+hangi backend'in çalıştığını bilmez, `container.py` seçimi ortam değişkenine göre
+yapar.
+
+Bu, gerçek bir LM Studio sunucusuna karşı canlı doğrulandı (mock değil): sunucu
+yerelde kuruldu (`qwen2.5-0.5b-instruct`, protokol testi için küçük bir model —
+model kalitesi değil, `response_format: json_schema` sözleşmesi test edildi),
+`OpenAICompatibleClient.structured_chat()` çağrıldı ve dönen JSON gerçekten
+doğrulanmış bir Pydantic nesnesine dönüştü (`isinstance(result, Renk) is True`),
+toplam 1.4 saniyede. Ollama'nın kendi `/v1/chat/completions` ucunun ve vLLM'in
+aynı `response_format` sözleşmesini uyguladığı resmi dokümantasyonlarından
+doğrulandı (`ctx7`); bu ikisi ayrıca canlı test edilmedi — vLLM resmi olarak
+Apple Silicon GPU desteklemediği için bu ortamda çalıştırılamadı.
 
 ### Geliştirme Süreci ve AI Araçları
 
@@ -222,7 +248,7 @@ Sistem dört eksende değerlendirilir:
 
 ### Durum ve Doğrulama
 
-Her madde iki şekilde doğrulandı: `pytest tests/ -v` (61 passed, taklit LLM
+Her madde iki şekilde doğrulandı: `pytest tests/ -v` (63 passed, taklit LLM
 istemcileriyle) ve gerçek yerel `qwen2.5:7b` sunucusuna karşı dört ayrı canlı
 çalıştırma (bkz. [Deneysel Doğrulama](#deneysel-doğrulama)). Çalıştırmalarda
 bulunan her sorun aynı bölümde kayıtlıdır; hepsi düzeltilip yeniden canlı test edildi.
@@ -424,35 +450,3 @@ olmamasına rağmen, üçüncü mesajda doğru hatırladı. Rolling summary meka
 böylece canlı doğrulandı. `OLLAMA_INTENT_MODEL` ayrıca birim testle (taklit LLM)
 doğrulandı; canlı koşuda ortam değişkeni boş olduğu için davranış zaten değişmedi,
 ayrı bir doğrulama gerekmedi.
-
-## Bilinen Sınırlamalar
-
-Aşağıdaki maddeler kapsam dışı bırakılan veya kasıtlı olarak kabul edilen tasarım
-sınırlarıdır. Her biri için gerekçe var.
-
-- **Taranmış (görsel) PDF desteklenmez.** OCR kapsam dışıdır; net bir hata döner.
-- **Kriter ağırlıklandırma yoktur.** Tüm kriterler eşit ağırlıklıdır.
-- **Tek Ollama modeli, tek instance.** Yüksek eşzamanlı yük için tasarlanmadı. 5 CV
-  batch'i bir extraction ve bir evaluation çağrısıyla işlenir (~8-10 dk, bkz.
-  [Deneysel Doğrulama](#deneysel-doğrulama)).
-- **SQLite tek dosyadır.** Çoklu process veya yatay ölçekleme için uygun değildir;
-  kapsam dışı.
-- **PDF sayfa sayısına kasıtlı olarak limit yoktur.** Sistem üst bir sınır
-  uygulamaz; okunabilir bir CV'yi keyfi bir sayfa limitiyle reddetmek yanlış olurdu
-  (bkz. `test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits`).
-  Bunun yerine operasyonel sınırlar var: Telegram indirme boyutu 15MB'da kesilir
-  (`MAX_PDF_BYTES`), LLM'e giden metin 20.000 karakterde kırpılır
-  (`MAX_EXTRACTED_CHARS`). PDF reddedilmez; yalnızca prompt/context taşması önlenir.
-  Kırpma parse sonrasında değil parse sırasında uygulanır: bütçe dolar dolmaz sayfa
-  okuma durur (`validate_and_extract_text`, `max_chars`). Küçük dosya boyutlu ama
-  çok sayfalı bir PDF gereksiz CPU harcamaz (bkz.
-  `test_max_chars_stops_reading_early_without_rejecting_pdf`).
-- **`/batch` kuyruğundaki PDF'ler ve sohbet geçmişi için TTL yoktur.** CV'ler kişisel
-  veri içerir; üretim ortamında bir retention politikası eklenmelidir. Demo botu
-  için gerekli görülmedi.
-- **Telegram albümünde teorik bir yarış koşulu vardır.** 5. dosyadan hemen sonra
-  6. bir update gelirse (gecikmeli veya yinelenen bir ağ paketiyle) yeni bir buffer
-  açılıp ayrı bir analiz tetiklenebilir. `MediaGroupManager.pop()` atomik olduğu
-  için çift sayım oluşmaz, ama geç gelen dosya için ayrı bir ikinci analiz riski
-  vardır. Mock CV demo senaryosunda (5 dosya tek seferde seçilip gönderilir)
-  gözlenmedi; kapsam dışı bırakıldı.
