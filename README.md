@@ -227,6 +227,19 @@ aynı `response_format` sözleşmesini uyguladığı resmi dokümantasyonlarınd
 doğrulandı (`ctx7`); bu ikisi ayrıca canlı test edilmedi — vLLM resmi olarak
 Apple Silicon GPU desteklemediği için bu ortamda çalıştırılamadı.
 
+**Botun kendisi de bu backend'e karşı canlı çalıştırıldı** (gerçek Telegram
+üzerinden, mock değil) ve gerçek bir sınır ortaya çıkardı: `qwen2.5-0.5b-instruct`
+(0.5B parametre) protokol testinde başarılıydı ama gerçek serbest metin
+mesajlarında güvenilir değildi. Bot her mesajda önce bir `structured_chat` çağrısı
+yapar (niyet sınıflandırması — kriter mi, sohbet mi); bu küçük model şemaya uygun
+JSON'u iki denemede de (ilk + tek retry) üretemedi ve kullanıcı
+`LLMOutputValidationError`'ın kontrollü hata mesajını gördü. İki ayrı gerçek mesajla
+tekrarlandı, tek seferlik bir hata değildi. Entegrasyonun kendisi doğru çalıştı —
+hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır bir mesaj döndü —
+darboğaz model kapasitesiydi. Bu nedenle bot varsayılan Ollama yapılandırmasına
+geri alındı; `openai_compatible` backend'i daha güçlü bir modelle (örn. 7B+ sınıfı)
+kullanılmalıdır.
+
 ### Geliştirme Süreci ve AI Araçları
 
 Kodun tamamı Claude Code ve Codex ile üretildi. Süreç ve mimari kararların
