@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from app.domain.errors import LLMOutputValidationError
 from app.domain.models import (
@@ -23,6 +24,15 @@ from app.infrastructure.llm.ollama_client import OllamaClient
 from app.infrastructure.llm.prompts import CANDIDATE_EVALUATOR_SYSTEM, CV_EXTRACTOR_SYSTEM
 from app.infrastructure.pdf.pymupdf_parser import validate_and_extract_text
 
+logger = logging.getLogger(__name__)
+
+# Sayfa/dosya boyutu için bilinçli olarak sabit bir limit koymuyoruz — PDF ödevi bunu
+# belirtmiyor ve okunabilir bir CV'yi keyfi bir sayfa limitiyle reddetmek yanlış olur
+# (bkz. test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits). Ama
+# LLM'e giden prompt'un boyutu context window/timeout riski taşır — o yüzden PDF'i
+# reddetmeden, yalnızca modele giden metni burada sınırlıyoruz.
+MAX_EXTRACTED_CHARS = 20_000
+
 
 class CVAnalysisService:
     def __init__(self, llm: OllamaClient):
@@ -30,7 +40,14 @@ class CVAnalysisService:
 
     async def extract_text(self, pdf_bytes: bytes) -> str:
         # Blocking PDF işi event loop'u bloklamasın diye thread'e atılır.
-        return await asyncio.to_thread(validate_and_extract_text, pdf_bytes)
+        text = await asyncio.to_thread(validate_and_extract_text, pdf_bytes)
+        if len(text) > MAX_EXTRACTED_CHARS:
+            logger.warning(
+                "Çıkarılan metin %d karakter, %d'e kırpıldı (context/timeout koruması)",
+                len(text), MAX_EXTRACTED_CHARS,
+            )
+            text = text[:MAX_EXTRACTED_CHARS]
+        return text
 
     async def analyze_from_text(
         self, text: str, criteria: list[Criterion]

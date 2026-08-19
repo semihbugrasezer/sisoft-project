@@ -20,6 +20,8 @@ from app.presentation.telegram.media_group_collector import MediaGroupManager
 logger = logging.getLogger(__name__)
 
 MEDIA_GROUP_DEBOUNCE_SECONDS = 1.8
+MAX_PDF_BYTES = 15 * 1024 * 1024  # 15MB — Telegram bot API'nin kendi 20MB indirme
+# sınırının altında, RAM'e devasa dosya indirmeyi (ve SQLite BLOB şişmesini) önler.
 
 START_MESSAGE = (
     "Merhaba! Ben bir İK ve sohbet botuyum.\n\n"
@@ -211,8 +213,15 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     container = _container(context)
     document = update.message.document
 
-    if not document.file_name.lower().endswith(".pdf"):
+    if not document.file_name or not document.file_name.lower().endswith(".pdf"):
         await update.message.reply_text("Sadece PDF dosyaları kabul edilir.")
+        return
+
+    if document.file_size and document.file_size > MAX_PDF_BYTES:
+        await update.message.reply_text(
+            f"{document.file_name} çok büyük (limit {MAX_PDF_BYTES // (1024 * 1024)}MB). "
+            "Daha küçük bir dosya gönderin."
+        )
         return
 
     # PDF caption'ında kriter cümlesi varsa önce onu kaydet (README.md §3).
@@ -262,15 +271,19 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     if chat_id in _batch_mode_chats(context):
-        pending_count = await container.repo.count_pending_files(chat_id)
-        if pending_count >= MAX_CV_COUNT:
+        # count+insert tek atomik çağrıda: concurrent_updates(8) altında aynı sohbete
+        # eşzamanlı gelen iki dosyanın ayrı count/insert çağrılarıyla limiti aşması
+        # (TOCTOU race) engellenir.
+        added = await container.repo.try_add_pending_file(
+            chat_id, document.file_name, pdf_bytes, MAX_CV_COUNT
+        )
+        if not added:
             await update.message.reply_text(
                 f"En fazla {MAX_CV_COUNT} CV yükleyebilirsiniz. "
                 "/analyze ile başlatın veya /cancel ile temizleyin."
             )
             return
-        await container.repo.add_pending_file(chat_id, document.file_name, pdf_bytes)
-        new_count = pending_count + 1
+        new_count = await container.repo.count_pending_files(chat_id)
         await update.message.reply_text(
             f"{document.file_name} kuyruğa eklendi ({new_count}/{MAX_CV_COUNT}). "
             "Analizi başlatmak için /analyze yazın."

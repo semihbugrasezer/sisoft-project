@@ -26,9 +26,15 @@ class OllamaClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def _post_chat(self, messages: list[dict], format_: str | dict | None, temperature: float) -> str:
+    async def _post_chat(
+        self,
+        messages: list[dict],
+        format_: str | dict | None,
+        temperature: float,
+        model: str | None = None,
+    ) -> str:
         payload = {
-            "model": self._model,
+            "model": model or self._model,
             "messages": messages,
             "stream": False,
             "options": {"temperature": temperature},
@@ -60,15 +66,21 @@ class OllamaClient:
         user: str,
         response_model: type[T],
         temperature: float = 0.0,
+        model: str | None = None,
     ) -> T:
         """Sistem+kullanıcı promptuyla çağırır, çıktıyı response_model'e doğrular.
-        Şema hatasında bir kez düzeltme denenir, sonra LLMOutputValidationError."""
+        Şema hatasında bir kez düzeltme denenir, sonra LLMOutputValidationError.
+
+        `model`: verilmezse `__init__`'teki ana model kullanılır. İsteğe bağlı override —
+        örn. intent-classification gibi basit/ikili görevler için daha küçük/hızlı bir
+        model (`OLLAMA_INTENT_MODEL`) geçirilebilir; extraction/evaluation gibi karmaşık
+        görevler ana modelde kalmaya devam eder."""
         schema = response_model.model_json_schema()
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        raw = await self._post_chat(messages, format_=schema, temperature=temperature)
+        raw = await self._post_chat(messages, format_=schema, temperature=temperature, model=model)
         try:
             return response_model.model_validate_json(raw)
         except (ValidationError, json.JSONDecodeError) as first_error:
@@ -86,7 +98,9 @@ class OllamaClient:
                     ),
                 },
             ]
-            raw2 = await self._post_chat(retry_messages, format_=schema, temperature=temperature)
+            raw2 = await self._post_chat(
+                retry_messages, format_=schema, temperature=temperature, model=model
+            )
             try:
                 return response_model.model_validate_json(raw2)
             except (ValidationError, json.JSONDecodeError) as second_error:
