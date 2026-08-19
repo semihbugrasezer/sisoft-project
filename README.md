@@ -28,7 +28,7 @@ Bu bir kod kusuru değildir; kısıtlı JSON üretiminin donanım maliyetidir ve
 1. [Hızlı Başlangıç](#hızlı-başlangıç)
 2. [Demo Senaryosu](#demo-senaryosu)
 3. [Sistem Mimarisi](#sistem-mimarisi)
-4. [Gereksinim Karşılama](#gereksinim-karşılama-pdf-ile-birebir)
+4. [Nasıl Çalışıyor](#nasıl-çalışıyor)
 5. [Çıktı Formatı](#çıktı-formatı)
 6. [Tasarım Kararları](#tasarım-kararları)
 7. [Deneysel Doğrulama](#deneysel-doğrulama)
@@ -105,19 +105,17 @@ En büyük dosya `handlers.py`'dir (331 satır). Bunun nedeni Telegram tarafın�
 karmaşıklığıdır: komutlar, albüm toplama, batch modu, kilitleme. İş mantığının kendisi
 serviste kalır; handler yalnızca yönlendirir.
 
-## Gereksinim Karşılama (PDF ile birebir)
+## Nasıl Çalışıyor
 
-Aşağıdaki numaralar PDF'in kendi bölüm sırasını izler. Kod docstring'leri de aynı
-numarayı kullanır — örneğin `chat_service.py`'deki `README.md §2` yorumu aşağıdaki
-§2'ye işaret eder.
+Bot iki işlevi yürütür: bağlamı koruyan genel sohbet, ve konuşma içinde tanımlanan
+dinamik kriterlere göre CV analizi. Aşağıdaki bölümler her işlevin ne yaptığını ve
+nasıl çalıştığını açıklar. Alt başlıklar kod docstring'lerindeki bölüm numaralarıyla
+eşleşir — örneğin `chat_service.py`'deki `README.md §2` yorumu "Sohbet ve Bağlam
+Yönetimi" başlığına işaret eder.
 
-### §1 — Projenin Amacı
+Sistem arka planda yerel bir dil modeliyle çalışır; bu projede Ollama (`qwen2.5:7b`).
 
-Kullanıcılarla günlük konularda sohbet edebilen ve konuşma içinde tanımlanan
-tamamen dinamik kriterlere göre CV analizi yapabilen bir Telegram botu. Sistem
-arka planda yerel bir dil modeliyle çalışır; bu projede Ollama.
-
-### §2 — Genel Sohbet Modu (Daily Chat)
+### Sohbet ve Bağlam Yönetimi (§2)
 
 Bot günlük mesajlara bir dil modeli aracılığıyla yanıt verir. Sohbet geçmişi
 `sqlite_repo.py` içinde güvenli biçimde tutulur. Her yeni mesajda önceki
@@ -138,7 +136,7 @@ aynı mesajlar bir sonraki turda tekrar özetlenir, veri kaybı olmaz (bkz.
 `tests/test_chat_service.py`). Mekanizma hem birim testle hem gerçek modelle canlı
 doğrulandı (bkz. [Deneysel Doğrulama](#deneysel-doğrulama)).
 
-### §3 — Dinamik Kriter Tanımlama ve Tekli CV Analizi
+### Dinamik Kriter Tanımlama ve Tekli CV Analizi (§3)
 
 Sabit kriter mimarisi yoktur. Kullanıcı puanlama kriterlerini serbest metinle
 tanımlar (`criteria_service.py`); komut gerekmez. Tanımlanan kriterler LLM prompt'una
@@ -149,7 +147,7 @@ analiz üretir. Rapor güçlü yönleri (`strengths`), zayıf yönleri (`weaknes
 gelişim tavsiyelerini içerir. Telegram'da okunaklı bir Markdown şablonuyla sunulur
 (`formatter.py`).
 
-### §4 — PDF Doğrulama ve LLM Extraction ile Standartlaştırma
+### PDF Doğrulama ve Ortak Şemaya Dönüştürme (§4)
 
 Sisteme farklı şablon, tablo ve biçimlerdeki PDF CV'ler girer. Backend her dosyayı
 doğrular: bozuk mu, şifreli mi, okunamaz mı (`pymupdf_parser.py`). Geçersiz bir dosya
@@ -173,7 +171,7 @@ Ortak profil şeması (`CandidateProfile`, `app/domain/models.py`):
 }
 ```
 
-### §5 — Çoklu CV Skorlama ve Filtreleme
+### Çoklu CV Skorlama ve Sıralama (§5)
 
 Kullanıcı en fazla 5 mock CV'yi toplu gönderebilir. Dosyalar `asyncio.gather` ile
 paralel işlenir. Bot bu süre boyunca yanıt vermeye devam eder
@@ -183,8 +181,7 @@ Her CV dinamik kriter eşleşmelerine göre puanlanır. Ortalama backend'de
 deterministik olarak hesaplanır; LLM'e yaptırılmaz. En yüksek ortalamalı ilk 3 aday
 yapılandırılmış bir JSON olarak döner.
 
-PDF'in kendi örnek şeması (ödev dokümanından birebir; gerçek canlı çıktı için bkz.
-[Çıktı Formatı](#çıktı-formatı)):
+Beklenen çıktı şeması (gerçek canlı örnek için bkz. [Çıktı Formatı](#çıktı-formatı)):
 
 ```json
 {
@@ -204,21 +201,22 @@ PDF'in kendi örnek şeması (ödev dokümanından birebir; gerçek canlı çık
 }
 ```
 
-### §6 — Teknik Beklentiler
+### Teknik Altyapı (§6)
 
-Backend Python ile yazıldı; PDF'in izin verdiği üç dilden biri (diğerleri Java/Spring
-Boot ve Go). Katmanlı mimari prensiplerine uyar (`domain / application /
-infrastructure / presentation`). Telegram entegrasyonu Long Polling üzerinden
-çalışır (`python-telegram-bot`, `application.run_polling`) ve kilitlenmez. LLM
-motoru Ollama'dır (`qwen2.5:7b`); iletişim `httpx.AsyncClient` üzerinden `/api/chat`
-uç noktasıyla kurulur.
+Backend Python ile yazıldı. Katmanlı mimari prensiplerine uyar (`domain /
+application / infrastructure / presentation`). Telegram entegrasyonu Long Polling
+üzerinden çalışır (`python-telegram-bot`, `application.run_polling`) ve kilitlenmez.
+LLM motoru Ollama'dır (`qwen2.5:7b`); iletişim `httpx.AsyncClient` üzerinden
+`/api/chat` uç noktasıyla kurulur.
 
-### §7 — Vibe Coding ve İleri Seviye AI Araçları
+### Geliştirme Süreci ve AI Araçları (§7)
 
-Kodun tamamı Claude Code ve Codex ile üretildi. AI destekli geliştirme süreci ve
-mimari kararların gerekçeleri [Tasarım Kararları](#tasarım-kararları) bölümündedir.
+Kodun tamamı Claude Code ve Codex ile üretildi. Süreç ve mimari kararların
+gerekçeleri [Tasarım Kararları](#tasarım-kararları) bölümündedir.
 
-### §8 — Değerlendirme Kriterleri (PDF'in Kendi Rubric'i)
+### Değerlendirme Ölçütleri (§8)
+
+Sistem dört eksende değerlendirilir:
 
 1. **Dinamik Prompt Başarısı** — sohbetten gelen kriterleri prompt'a gömme, LLM
    Extraction'ı yönetme, tekli (nitel analiz) ve çoklu (JSON çıktı) modları kararlı
@@ -230,7 +228,7 @@ mimari kararların gerekçeleri [Tasarım Kararları](#tasarım-kararları) böl
 4. **Vibe Coding Hâkimiyeti** — üretilen mimariye, dil pratiklerine ve istisna
    yönetimine teknik hâkimiyet.
 
-### §9 — Teslim Kabul Listesi
+### Durum ve Doğrulama (§9)
 
 Her madde iki şekilde doğrulandı: `pytest tests/ -v` (61 passed, taklit LLM
 istemcileriyle) ve gerçek yerel `qwen2.5:7b` sunucusuna karşı dört ayrı canlı
