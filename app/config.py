@@ -13,6 +13,7 @@ class Config:
     ollama_base_url: str
     ollama_model: str
     ollama_intent_model: str | None
+    ollama_max_concurrency: int
     db_path: str
     llm_timeout: float
 
@@ -32,6 +33,9 @@ def load_config() -> Config:
         # mi) için daha küçük/hızlı bir model, örn. "qwen2.5:1.5b". Boşsa ana model
         # kullanılır — davranış değişmez, yalnızca opt-in hızlanma.
         ollama_intent_model=os.getenv("OLLAMA_INTENT_MODEL") or None,
+        # Tek yerel Ollama instance'ına aynı anda gidebilecek istek sayısını sınırlar
+        # (bkz. ollama_client.py) — Telegram concurrent_updates(8) sınırından bağımsız.
+        ollama_max_concurrency=int(os.getenv("OLLAMA_MAX_CONCURRENCY", "3")),
         db_path=os.getenv("DB_PATH", "sisoft.db"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT", "600")),
     )

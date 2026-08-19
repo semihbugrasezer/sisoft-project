@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TypeVar
@@ -18,10 +19,16 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class OllamaClient:
-    def __init__(self, base_url: str, model: str, timeout: float):
+    def __init__(self, base_url: str, model: str, timeout: float, max_concurrency: int = 3):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0))
+        # Telegram tarafı concurrent_updates(8) ile eşzamanlı update kabul eder, ama
+        # tek yerel Ollama instance'ı bunları paralel işleyemez — sınırsız istek
+        # gönderilirse hepsi sunucu tarafında kuyruklanır (yanıt vermeye devam etme
+        # garantisi bozulmaz ama gecikme öngörülemez büyür). Bu semaphore, kaç isteğin
+        # aynı anda "uçuşta" olabileceğini backend'de sınırlar.
+        self._semaphore = asyncio.Semaphore(max_concurrency)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -42,7 +49,8 @@ class OllamaClient:
         if format_ is not None:
             payload["format"] = format_
         try:
-            resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)
+            async with self._semaphore:
+                resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning("Ollama isteği başarısız: %s", exc)

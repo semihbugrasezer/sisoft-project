@@ -39,8 +39,12 @@ class CVAnalysisService:
         self._llm = llm
 
     async def extract_text(self, pdf_bytes: bytes) -> str:
-        # Blocking PDF işi event loop'u bloklamasın diye thread'e atılır.
-        text = await asyncio.to_thread(validate_and_extract_text, pdf_bytes)
+        # Blocking PDF işi event loop'u bloklamasın diye thread'e atılır. max_chars
+        # parser'a geçiriliyor ki bütçe dolar dolmaz sayfa okumayı durdursun —
+        # PDF'i reddetmez, yalnızca gereksiz sayfa taramasını önler.
+        text = await asyncio.to_thread(
+            validate_and_extract_text, pdf_bytes, max_chars=MAX_EXTRACTED_CHARS
+        )
         if len(text) > MAX_EXTRACTED_CHARS:
             logger.warning(
                 "Çıkarılan metin %d karakter, %d'e kırpıldı (context/timeout koruması)",

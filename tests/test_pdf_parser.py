@@ -87,6 +87,22 @@ def test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits():
     assert validate_and_extract_text(payload).strip()
 
 
+def test_max_chars_stops_reading_early_without_rejecting_pdf():
+    """max_chars PDF'i reddetmez, yalnızca bütçe dolunca sayfa okumayı durdurur —
+    büyük fakat düşük öncelikli bir PDF'nin tüm sayfalarını gereksiz taramaz."""
+    doc = pymupdf.open()
+    for _ in range(20):
+        doc.new_page().insert_text((50, 70), "A" * 100)  # sayfa başı ~100 char
+    payload = doc.tobytes()
+    doc.close()
+
+    text = validate_and_extract_text(payload, max_chars=150)
+
+    assert text.strip()
+    # ilk 1-2 sayfadan sonra durmalı, 20 sayfanın tamamını okumamalı
+    assert len(text) < 100 * 20
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
