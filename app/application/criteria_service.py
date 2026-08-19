@@ -16,8 +16,12 @@ from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 # ("React tecrübesi benim için önemli" gibi bir cümlede "kriter/değerlendir/skorla"
 # kelimesi geçmez ama kriter tanımıdır). Ucuz bir heuristic bunu güvenilir şekilde
 # ayıramaz — yanlış negatif = sessizce kriter kaybı, rubric'in tam ölçtüğü yer.
-# Çift-çağrı gecikmesi bu yüzden handler seviyesinde (asyncio.gather ile intent +
-# chat'i paralel başlatarak, doğruluktan taviz vermeden) ele alınıyor.
+# Çift-çağrı gecikmesi bunun yerine `intent_model` ile ele alınıyor (aşağıda):
+# handlers.text_message hâlâ sıralı çalışır (önce intent, sonra chat — intent
+# "criteria" çıkarsa chat çağrısı hiç yapılmaz, bu yüzden paralel başlatmak
+# ikinci çağrının çoğu zaman gereksiz olacağı bir işi baştan yapmak demektir);
+# gerçek hızlanma intent çağrısının kendisini küçük/hızlı bir modele taşımaktan
+# gelir, bkz. `__init__`'teki `intent_model`.
 
 
 class CriteriaService:

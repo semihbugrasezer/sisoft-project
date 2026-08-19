@@ -28,6 +28,8 @@ class Criterion(BaseModel):
 
 
 class CriteriaExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     criteria: list[Criterion] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -40,6 +42,8 @@ class CriteriaExtractionResult(BaseModel):
 
 
 class CriteriaIntentResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     intent: Literal["criteria", "chat"]
     criteria: list[Criterion] = Field(default_factory=list)
 
@@ -105,11 +109,15 @@ class CandidateProfile(BaseModel):
 
 
 class BatchProfileItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     documentId: int
     profile: CandidateProfile
 
 
 class BatchProfileResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     candidates: list[BatchProfileItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
 
 
@@ -168,11 +176,15 @@ class BatchCandidateEvaluation(BaseModel):
 
 
 class BatchEvaluationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     documentId: int
     evaluation: BatchCandidateEvaluation
 
 
 class BatchEvaluationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     candidates: list[BatchEvaluationItem] = Field(min_length=1, max_length=MAX_CV_COUNT)
 
 

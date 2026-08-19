@@ -24,7 +24,12 @@ class Container:
 
 
 def build_container(config: Config) -> Container:
-    llm = OllamaClient(config.ollama_base_url, config.ollama_model, config.llm_timeout)
+    llm = OllamaClient(
+        config.ollama_base_url,
+        config.ollama_model,
+        config.llm_timeout,
+        max_concurrency=config.ollama_max_concurrency,
+    )
     repo = SQLiteRepo(config.db_path)
     cv_service = CVAnalysisService(llm)
     return Container(

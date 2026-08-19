@@ -5,8 +5,16 @@ import pymupdf as fitz
 
 from app.domain.errors import PDFValidationError
 
-def validate_and_extract_text(pdf_bytes: bytes) -> str:
-    """Bozuk/şifreli/boş PDF'i sade Türkçe hata mesajıyla reddeder, geçerliyse metni döner."""
+def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) -> str:
+    """Bozuk/şifreli/boş PDF'i sade Türkçe hata mesajıyla reddeder, geçerliyse metni döner.
+
+    `max_chars` verilirse bütçe dolar dolmaz sayfa okumayı durdurur — bu PDF'i
+    REDDETMEZ (kasıtlı olarak sayfa sayısı limiti yok, bkz.
+    test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits), yalnızca
+    zaten LLM'e gidecek metni kırpacaksak önce tüm sayfaları gereksiz yere okumayı
+    önler — küçük dosya boyutlu ama çok sayfalı bir PDF'nin CPU'yu boşuna meşgul
+    etmesini engeller.
+    """
     if not pdf_bytes:
         raise PDFValidationError("Dosya boş görünüyor.")
     if not pdf_bytes.startswith(b"%PDF-"):
@@ -22,7 +30,15 @@ def validate_and_extract_text(pdf_bytes: bytes) -> str:
         if doc.page_count == 0:
             raise PDFValidationError("PDF içinde sayfa bulunamadı.")
 
-        text = "\n".join(page.get_text(sort=True) for page in doc)
+        chunks: list[str] = []
+        total = 0
+        for page in doc:
+            chunk = page.get_text(sort=True)
+            chunks.append(chunk)
+            total += len(chunk)
+            if max_chars is not None and total >= max_chars:
+                break
+        text = "\n".join(chunks)
     finally:
         doc.close()
 
