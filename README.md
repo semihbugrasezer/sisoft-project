@@ -131,8 +131,8 @@ eski mesajlar silinmez, bir LLM çağrısıyla tek bir özete katlanır (**rolli
 summary** — `chat_summary` tablosu, `last_summarized_id` ile ilerleme takibi) ve
 sonraki her yanıtta system prompt'una eklenir. Limit olmadan gönderim, uzun bir
 sohbette modelin context window'unu taşırıp Ollama'nın sessizce baştan kırpmasına yol
-açardı — yani bağlam yine kaybolurdu, üstelik kontrolsüz ve habersiz biçimde; rolling
-summary bu kaybı öngörülebilir ve dokümante edilmiş hale getirir. Özetleme çağrısı
+açardı; bağlam bu durumda da kaybolurdu, üstelik kontrolsüz ve habersiz biçimde. Rolling
+summary bu kaybı öngörülebilir ve belgelenmiş hale getirir. Özetleme çağrısı
 başarısız olursa sohbet kesilmez: `last_summarized_id` ilerletilmediği için aynı
 mesajlar bir sonraki turda tekrar özetlenmeye çalışılır ve veri kaybı olmaz (bkz.
 `tests/test_chat_service.py`). Mekanizma hem birim testlerle hem gerçek modele karşı
@@ -248,7 +248,7 @@ olarak doğrulanmıştır.
 - [x] Bot çoklu analiz sırasında yanıt vermeye devam ediyor — `concurrent_updates(8)` + chat_id bazlı kilit.
 - [x] Backend nesne yönelimli ve katmanlı mimariye uyuyor — bkz. [Sistem Mimarisi](#sistem-mimarisi).
 - [x] Telegram ve seçilen LLM motoru entegrasyonları çalışıyor — python-telegram-bot + Ollama.
-- [x] Aday, AI destekli geliştirme sürecini ve üretilen kodu teknik olarak savunabiliyor — bkz. §7 ve [Tasarım Kararları](#tasarım-kararları).
+- [x] Geliştirici, AI destekli geliştirme sürecini ve üretilen kodu teknik olarak savunabiliyor — bkz. §7 ve [Tasarım Kararları](#tasarım-kararları).
 
 Bu doğrulamalar sırasında ortaya çıkan ve bilinçli olarak kapatılmayan tek sapma
 aşağıda özetlenmiştir; tam gerekçesi [Deneysel Doğrulama](#deneysel-doğrulama)
@@ -374,12 +374,12 @@ PDF'in "hızlıca işlenmelidir" beklentisi, bu donanım/model kombinasyonunda g
 zamanlı bir Telegram deneyimi vermemektedir. Kod tarafı doğrudur (paralel validation +
 tek batch çağrısı, öncekinden çok daha az round-trip); darboğaz model/donanımdır.
 
-### Neden Yavaş, Nasıl Çözülür
+### Performans Darboğazı ve Optimizasyon Seçenekleri
 
-Bu ölçüm saklanmadan gösterilmiştir: "hızlı" göreceli bir kavramdır ve kod zaten
-optimal noktadadır — kalan gecikme mimariden değil, tek yerel 7B modelin token-token
-JSON üretiminden gelmektedir. Aşağıdaki üç seçenek mimariyi bozmadan uygulanabilir;
-bu teslimde kapsam dışı bırakılmıştır:
+"Hızlı" göreceli bir kavramdır; ölçümler kodun zaten optimal noktada olduğunu, kalan
+gecikmenin mimariden değil tek yerel 7B modelin token-token JSON üretiminden
+kaynaklandığını göstermektedir. Aşağıdaki üç seçenek mimariyi bozmadan uygulanabilir
+niteliktedir; bu teslimde kapsam dışı bırakılmıştır:
 
 1. **Üretim ortamı: vLLM veya bulut GPU.** Yerel Apple Silicon yerine dedicated GPU
    ve vLLM'in continuous batching'i süreyi düşürür. Ancak bu, tek satırlık bir
@@ -404,15 +404,18 @@ bu teslimde kapsam dışı bırakılmıştır:
    çünkü önceki on-çağrılı akış timeout riski taşıyordu (bkz. [Tasarım
    Kararları](#tasarım-kararları)); bu geri adım riskli bulunmuştur.
 
-**Denenip geri alınan bir yaklaşım** (savunulabilir bir mühendislik hikâyesi olarak
-kayıtlıdır): günlük sohbette her mesajda çalışan intent-classification çağrısını
-anahtar-kelime tabanlı bir heuristic ile atlamak denenmiştir — "kriter/değerlendir/
-skorla" gibi kelimeler yoksa LLM'e hiç gidilmeden "chat" varsayılsın. `pytest` bunu
-anında yakalamıştır: `test_free_text_without_keyword_can_define_criteria` testi
-kırılmıştır, çünkü PDF açıkça anahtar kelimesiz serbest metinden kriter tanımlamayı
-istemektedir ("React tecrübesi benim için önemli" cümlesinde tetikleyici bir kelime
-geçmez ama gerçek bir kriter tanımıdır). Heuristic geri alınmış, yukarıdaki
-`OLLAMA_INTENT_MODEL` çözümü bunun yerine geçmiştir — çünkü doğruluğa hiç dokunmaz.
+### Değerlendirilip Reddedilen Bir Alternatif
+
+Günlük sohbette her mesajda çalışan intent-classification çağrısını anahtar kelime
+tabanlı bir sezgisel yöntemle (heuristic) atlamak denenmiştir: "kriter/değerlendir/
+skorla" gibi tetikleyici kelimeler yoksa LLM'e hiç gidilmeden mesajın doğrudan "chat"
+olduğu varsayılsın. Test paketi bunu anında tespit etmiştir —
+`test_free_text_without_keyword_can_define_criteria` testi kırılmıştır, çünkü PDF
+açıkça anahtar kelimesiz serbest metinden kriter tanımlamayı gerektirir ("React
+tecrübesi benim için önemli" cümlesinde tetikleyici bir kelime geçmez ama geçerli bir
+kriter tanımıdır). Bu yaklaşım geri alınmış, yerine yukarıdaki `OLLAMA_INTENT_MODEL`
+çözümü benimsenmiştir; bu çözüm sınıflandırma doğruluğuna dokunmadan yalnızca
+gecikmeyi azaltır.
 
 ### Dördüncü Koşu — Rolling Summary
 
