@@ -1,4 +1,4 @@
-"""Tekli ve batch CV akışı: validate -> extract -> evaluate (README.md §3-5).
+"""Tekli ve batch CV akışı: validate -> extract -> evaluate (README.md → Nasıl Çalışıyor).
 
 extract_text ve analyze_from_text ayrı metotlar: batch_analysis_service önce TÜM
 dosyaları doğrulayıp sonra LLM'e geçmek istiyor (fail-fast), bu yüzden PDF

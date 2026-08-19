@@ -1,4 +1,4 @@
-"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (README.md §3-5)."""
+"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (README.md → Nasıl Çalışıyor)."""
 from __future__ import annotations
 
 from typing import Literal
@@ -95,7 +95,7 @@ class Language(BaseModel):
 class CandidateProfile(BaseModel):
     """PDF'in ortak profil şemasıyla birebir. `extra="forbid"`: LLM extraction'ın
     şema dışına taşmadığını (uydurma alan üretmediğini) garanti eder — extraction
-    kalitesi rubric'te doğrudan ölçülüyor (README.md §8)."""
+    kalitesi Kalite Hedefleri altında doğrudan ölçülüyor (README.md)."""
 
     model_config = ConfigDict(extra="forbid")
 

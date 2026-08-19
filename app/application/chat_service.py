@@ -1,10 +1,10 @@
-"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (README.md §2).
+"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (README.md → Sohbet ve Bağlam Yönetimi).
 
 Bağlam yönetimi iki katmanlı: son `CHAT_HISTORY_LIMIT` mesaj ham haliyle prompt'a
 girer, penceresinin dışına taşan eski mesajlar ise silinmeden LLM ile bir "rolling
-summary"ye katlanır ve system prompt'una eklenir. Böylece PDF'in "bağlam kaybolmayacak
-şekilde" şartı uzun sohbetlerde de karşılanır — limitsiz gönderim, model context
-window'unu taşırıp Ollama'nın sessizce baştan kırpmasına yol açıyordu (kontrolsüz kayıp).
+summary"ye katlanır ve system prompt'una eklenir. Böylece uzun sohbetlerde de bağlam
+kaybolmaz — limitsiz gönderim, model context window'unu taşırıp Ollama'nın sessizce
+baştan kırpmasına yol açıyordu (kontrolsüz kayıp).
 """
 from __future__ import annotations
 

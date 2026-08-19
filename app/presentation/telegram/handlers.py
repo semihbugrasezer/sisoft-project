@@ -1,4 +1,4 @@
-"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (README.md §6)."""
+"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (README.md → Teknik Altyapı)."""
 from __future__ import annotations
 
 import asyncio
@@ -24,18 +24,22 @@ MAX_PDF_BYTES = 15 * 1024 * 1024  # 15MB — Telegram bot API'nin kendi 20MB ind
 # sınırının altında, RAM'e devasa dosya indirmeyi (ve SQLite BLOB şişmesini) önler.
 
 START_MESSAGE = (
-    "Merhaba! Ben bir İK ve sohbet botuyum.\n\n"
-    "- Benimle serbest sohbet edebilirsin, bağlamı hatırlarım.\n"
-    "- Kriter tanımlamak için komuta gerek yok, doğrudan yaz:\n"
-    "  \"CV'leri React tecrübesi, temiz kod ve uzaktan çalışma uyumuna göre değerlendir\"\n"
-    "  (İstersen /criteria <serbest metin> ile de aynısını yapabilirsin.)\n"
-    "- Kriter tanımlıyken PDF gönder:\n"
-    "  • Tek PDF → hemen detaylı Markdown analiz raporu\n"
-    "  • Aynı gönderimde albüm olarak 2-5 PDF → otomatik top-3 JSON\n"
-    "  • Dosyaları tek tek göndermek istersen önce /batch, sonra PDF'ler, sonra /analyze\n"
-    "- /criteria_show: aktif kriterleri gösterir\n"
-    "- /cancel: bekleyen CV kuyruğunu temizler\n"
-    "- /reset: sohbet geçmişini ve kriterleri sıfırlar"
+    "Merhaba. Bu bot iki işlev sunar: genel sohbet ve CV analizi.\n\n"
+    "*Sohbet*\n"
+    "Serbest şekilde yaz, bağlamı hatırlarım.\n\n"
+    "*Kriter tanımlama*\n"
+    "Komut gerekmez, doğrudan yaz:\n"
+    "\"CV'leri React tecrübesi, temiz kod ve uzaktan çalışma uyumuna göre değerlendir\"\n"
+    "(İstersen /criteria <serbest metin> ile de tanımlayabilirsin.)\n\n"
+    "*CV analizi*\n"
+    "Kriter tanımlıyken PDF gönder:\n"
+    "• Tek PDF → detaylı Markdown analiz raporu\n"
+    "• Albüm olarak 2-5 PDF → otomatik top-3 JSON\n"
+    "• Tek tek göndermek istersen: /batch → PDF'ler → /analyze\n\n"
+    "*Diğer komutlar*\n"
+    "/criteria_show — aktif kriterleri gösterir\n"
+    "/cancel — bekleyen CV kuyruğunu temizler\n"
+    "/reset — sohbet geçmişini ve kriterleri sıfırlar"
 )
 
 
@@ -44,7 +48,7 @@ def _container(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> asyncio.Lock:
-    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (README.md §5)."""
+    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (README.md → Çoklu CV Skorlama ve Sıralama)."""
     locks: dict[int, asyncio.Lock] = context.application.bot_data.setdefault("chat_locks", {})
     if chat_id not in locks:
         locks[chat_id] = asyncio.Lock()
@@ -128,7 +132,7 @@ async def _debounce_and_trigger(
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(START_MESSAGE)
+    await update.message.reply_text(START_MESSAGE, parse_mode="Markdown")
 
 
 async def criteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -224,7 +228,7 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (README.md §3).
+    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (README.md → Dinamik Kriter Tanımlama ve Tekli CV Analizi).
     caption = update.message.caption
     if caption:
         try:

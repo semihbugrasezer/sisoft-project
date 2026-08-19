@@ -1,4 +1,4 @@
-"""PDF'nin sohbet, extraction ve değerlendirme prompt'ları (README.md §2-5)."""
+"""PDF'nin sohbet, extraction ve değerlendirme prompt'ları (README.md → Nasıl Çalışıyor)."""
 
 DAILY_CHAT_SYSTEM = (
     "Sen Türkçe konuşan, samimi ve yardımsever bir sohbet asistanısın. "

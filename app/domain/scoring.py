@@ -1,4 +1,4 @@
-"""Ortalama ve sıralama — LLM'den bağımsız saf fonksiyonlar (README.md §5).
+"""Ortalama ve sıralama — LLM'den bağımsız saf fonksiyonlar (README.md → Çoklu CV Skorlama ve Sıralama).
 Ortalama backend'de hesaplanır: kanıtlanabilir ve deterministik olsun.
 """
 from __future__ import annotations

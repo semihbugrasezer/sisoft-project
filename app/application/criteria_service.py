@@ -1,4 +1,4 @@
-"""Dinamik kriter tanımlama use-case (README.md §3)."""
+"""Dinamik kriter tanımlama use-case (README.md → Dinamik Kriter Tanımlama ve Tekli CV Analizi)."""
 from __future__ import annotations
 
 import re
