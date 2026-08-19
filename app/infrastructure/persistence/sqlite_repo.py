@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS chat_history (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_history_chat ON chat_history(chat_id, id);
+CREATE TABLE IF NOT EXISTS chat_summary (
+    chat_id INTEGER PRIMARY KEY,
+    summary TEXT NOT NULL,
+    last_summarized_id INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS criteria (
     chat_id INTEGER PRIMARY KEY,
     criteria_json TEXT NOT NULL
@@ -85,7 +90,56 @@ class SQLiteRepo:
 
     async def clear_history(self, chat_id: int) -> None:
         async with self._lock:
-            await asyncio.to_thread(self._exec_sync, "DELETE FROM chat_history WHERE chat_id = ?", (chat_id,))
+            await asyncio.to_thread(self._clear_history_sync, chat_id)
+
+    def _clear_history_sync(self, chat_id: int) -> None:
+        self._conn.execute("DELETE FROM chat_history WHERE chat_id = ?", (chat_id,))
+        self._conn.execute("DELETE FROM chat_summary WHERE chat_id = ?", (chat_id,))
+        self._conn.commit()
+
+    # --- rolling summary (bağlam penceresi dışına taşan geçmiş) ------------
+
+    async def get_summary(self, chat_id: int) -> str | None:
+        async with self._lock:
+            row = await asyncio.to_thread(
+                self._fetchone_sync, "SELECT summary FROM chat_summary WHERE chat_id = ?", (chat_id,)
+            )
+        return row[0] if row else None
+
+    async def get_unsummarized_overflow(self, chat_id: int, limit: int) -> list[dict]:
+        """Bağlam penceresinin (son `limit` mesaj) DIŞINDA kalan ve henüz özetlenmemiş
+        mesajları döner. Bunlar özete katlanır, böylece eski bağlam tamamen kaybolmaz."""
+        async with self._lock:
+            rows = await asyncio.to_thread(self._get_unsummarized_overflow_sync, chat_id, limit)
+        return [{"id": row[0], "role": row[1], "content": row[2]} for row in rows]
+
+    def _get_unsummarized_overflow_sync(self, chat_id: int, limit: int) -> list[tuple]:
+        cur = self._conn.execute(
+            "SELECT id, role, content FROM chat_history "
+            "WHERE chat_id = ? "
+            "  AND id > COALESCE((SELECT last_summarized_id FROM chat_summary WHERE chat_id = ?), 0) "
+            "  AND id NOT IN ("
+            "      SELECT id FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT ?"
+            "  ) "
+            "ORDER BY id",
+            (chat_id, chat_id, chat_id, limit),
+        )
+        return cur.fetchall()
+
+    async def set_summary(self, chat_id: int, summary: str, last_summarized_id: int) -> None:
+        async with self._lock:
+            await asyncio.to_thread(
+                self._set_summary_sync, chat_id, summary, last_summarized_id
+            )
+
+    def _set_summary_sync(self, chat_id: int, summary: str, last_summarized_id: int) -> None:
+        self._conn.execute(
+            "INSERT INTO chat_summary (chat_id, summary, last_summarized_id) VALUES (?, ?, ?) "
+            "ON CONFLICT(chat_id) DO UPDATE SET "
+            "  summary = excluded.summary, last_summarized_id = excluded.last_summarized_id",
+            (chat_id, summary, last_summarized_id),
+        )
+        self._conn.commit()
 
     # --- kriterler ---------------------------------------------------------
 

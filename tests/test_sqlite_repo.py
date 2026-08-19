@@ -57,6 +57,52 @@ async def test_chat_history_is_capped_to_limit(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_overflow_excludes_recent_window_and_already_summarized(tmp_path):
+    """Rolling summary'nin SQL'i: pencere içindeki son N mesaj ve daha önce
+    özetlenmiş olanlar tekrar özetlenmeye gönderilmez."""
+    repo = SQLiteRepo(str(tmp_path / "chat.db"))
+    total = CHAT_HISTORY_LIMIT + 6
+    for index in range(total):
+        await repo.add_message(4, "user", str(index))
+
+    overflow = await repo.get_unsummarized_overflow(4, CHAT_HISTORY_LIMIT)
+    # pencere dışında kalan 6 mesaj (en eskiler)
+    assert [item["content"] for item in overflow] == [str(i) for i in range(6)]
+
+    # ilk 3'ünü özetlenmiş işaretle → sadece kalan 3'ü dönmeli
+    await repo.set_summary(4, "özet", overflow[2]["id"])
+    remaining = await repo.get_unsummarized_overflow(4, CHAT_HISTORY_LIMIT)
+    await repo.close()
+
+    assert [item["content"] for item in remaining] == ["3", "4", "5"]
+
+
+@pytest.mark.asyncio
+async def test_no_overflow_before_window_is_full(tmp_path):
+    repo = SQLiteRepo(str(tmp_path / "chat.db"))
+    for index in range(CHAT_HISTORY_LIMIT):
+        await repo.add_message(4, "user", str(index))
+
+    overflow = await repo.get_unsummarized_overflow(4, CHAT_HISTORY_LIMIT)
+    await repo.close()
+
+    assert overflow == []
+
+
+@pytest.mark.asyncio
+async def test_clear_history_also_clears_summary(tmp_path):
+    repo = SQLiteRepo(str(tmp_path / "chat.db"))
+    await repo.add_message(4, "user", "x")
+    await repo.set_summary(4, "eski özet", 1)
+
+    await repo.clear_history(4)
+    summary = await repo.get_summary(4)
+    await repo.close()
+
+    assert summary is None
+
+
+@pytest.mark.asyncio
 async def test_try_add_pending_file_enforces_limit_atomically(tmp_path):
     repo = SQLiteRepo(str(tmp_path / "chat.db"))
     for index in range(5):

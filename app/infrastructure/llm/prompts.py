@@ -5,6 +5,14 @@ DAILY_CHAT_SYSTEM = (
     "Kısa, net ve doğal cevaplar ver. Önceki mesajları hatırlayarak bağlamı koru."
 )
 
+CHAT_SUMMARIZER_SYSTEM = (
+    "Sen bir sohbet özetleyicisisin. Sana bir sohbetin eski bölümü (ve varsa daha da "
+    "eskisinin özeti) verilecek. Bunları TEK bir güncel özete katla. Özette kullanıcının "
+    "kendisi hakkında verdiği bilgiler (isim, meslek, tercihler), verilen kararlar ve "
+    "devam eden konular korunmalı — sonraki mesajlarda bağlam kaybolmasın. Türkçe yaz, "
+    "kısa tut (en fazla birkaç cümle), yorum ekleme, sadece özeti döndür."
+)
+
 CRITERIA_EXTRACTOR_SYSTEM = (
     "Sen bir işe alım kriteri ayrıştırıcısısın. Kullanıcının serbest metninden "
     "kullanıcının tanımladığı tüm değerlendirme kriterlerini çıkar. Her kriter için: "
