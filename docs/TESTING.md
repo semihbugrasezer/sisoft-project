@@ -21,7 +21,8 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **105 test**, 16 dosyada:
+Toplam **105 test**, 16 dosyada. (Test sayısının tek kaynağı bu
+dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|

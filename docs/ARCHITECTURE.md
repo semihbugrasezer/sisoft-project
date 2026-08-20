@@ -30,8 +30,8 @@ Application ──────────────┐
 ```
 
 Bu bilinçli bir tercihtir: `LLMPort` gerçek bir ihtiyaca dayanır — iki farklı
-implementasyon (`OllamaClient`, `OpenAICompatibleClient`) vardır ve ödev üç
-farklı LLM motorunu desteklemeyi şart koşar. Buna karşılık SQLite ve PDF
+implementasyon (`OllamaClient`, `OpenAICompatibleClient`) fiilen vardır ve
+motor değişimi bir yapılandırma sorunudur. Buna karşılık SQLite ve PDF
 parser için tek implementasyon vardır; onlara resmî bir arayüz eklemek bu
 ölçekte karşılıksız bir soyutlama olurdu. Testler yine de izoledir: Python'da
 duck typing sayesinde sahte (fake) nesneler ayrı bir soyut sınıf tanımlamadan
@@ -104,6 +104,8 @@ Application / Infrastructure                │
       │     "Model şu anda yanıt vermiyor…" │    reply(exc.user_message)
       ├── LLMOutputValidationError          │
       │     (tek retry sonrası)             │
+      ├── IntentUndecidableError            │
+      │     "Kriter mi sohbet mi …"         │
       └── NoCriteriaDefinedError            │
             "Önce kriter tanımlamalısınız…" │
                                             │
@@ -150,7 +152,9 @@ iki LLM çağrısı".
 
 ## LLM Backend'leri
 
-Ödev üç motoru da destekler; ikisi tek adaptörle karşılanır:
+Ödev **"Ollama, vLLM veya LM Studio entegrasyonu sağlanmalıdır"** diyor — yani
+bunlardan **en az biri** yeterli. Bu proje zorunlu kapsamın ötesine geçip
+üçünü de destekler; ikisi tek adaptörle karşılanır:
 
 | Motor | Adaptör | Uç | Durum |
 |---|---|---|---|

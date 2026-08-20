@@ -38,8 +38,8 @@ Sütunların anlamı:
 | NFR-02 | Python (kabul edilen dillerden biri) | Python 3.13 / 3.14 | CI matrisi (`.github/workflows/ci.yml`) |
 | NFR-03 | Telegram Long Polling veya Webhook | `main.py` → `application.run_polling()` | Otomatik testle kapsanmıyor (bot API'sine gerçek bağlantı gerektirir); canlı Telegram koşularında doğrulandı — bkz. [VALIDATION.md](./VALIDATION.md) |
 | NFR-04 | Kilitlenmeyen asenkron mesajlaşma | `router.py` → `concurrent_updates(8)`, `handlers.py` → chat_id bazlı iki ayrı `asyncio.Lock` ailesi | `tests/test_router.py` (eşzamanlı update kabulü), `tests/test_handlers.py::test_same_chat_messages_are_processed_in_arrival_order` ve `::test_different_chats_are_not_serialized_against_each_other`; [CONCURRENCY.md](./CONCURRENCY.md); canlı koşu: batch sırasında bot yanıt vermeye devam etti |
-| NFR-05 | Ollama entegrasyonu | `infrastructure/llm/ollama_client.py` (`/api/chat`) | `tests/test_ollama_client.py`; canlı koşu #1-#7 |
-| NFR-06 | vLLM / LM Studio entegrasyonu | `infrastructure/llm/openai_compatible_client.py` (`/v1/chat/completions`) | `tests/test_openai_compatible_client.py`; **LM Studio + `gemma-4-e4b` ile uçtan uca canlı doğrulandı** (kriter çıkarımı + niyet + tam CV hattı — koşu #8, [VALIDATION.md](./VALIDATION.md)). vLLM aynı OpenAI-uyumlu kontratı paylaşır; donanım kısıtı nedeniyle ayrıca çalıştırılamadı. |
+| NFR-05 | LLM motoru entegrasyonu — PDF "Ollama, vLLM **veya** LM Studio" diyor, yani biri yeterli. Bu satır zorunlu gereksinimi karşılar. | `infrastructure/llm/ollama_client.py` (`/api/chat`) | `tests/test_ollama_client.py`; canlı koşu #1-#7 |
+| NFR-06 | *(Zorunlu değil — ek yetenek)* vLLM / LM Studio entegrasyonu | `infrastructure/llm/openai_compatible_client.py` (`/v1/chat/completions`) | `tests/test_openai_compatible_client.py`; **LM Studio + `gemma-4-e4b` ile uçtan uca canlı doğrulandı** (kriter çıkarımı + niyet + tam CV hattı — koşu #8, [VALIDATION.md](./VALIDATION.md)). vLLM aynı OpenAI-uyumlu kontratı paylaşır; donanım kısıtı nedeniyle ayrıca çalıştırılamadı. |
 
 ## Değerlendirme Kriterleri (PDF §Değerlendirme Kriterleri)
 
@@ -54,6 +54,6 @@ Sütunların anlamı:
 
 | Konu | Karar | Gerekçe |
 |---|---|---|
-| OCR | Uygulanmadı | Ödev taranmış belgenin *doğrulamada yakalanmasını* istiyor; sistem bunu net hata mesajıyla reddediyor (FR-08). |
+| OCR | Uygulanmadı | Ödev OCR istemiyor; taranmış/görsel-yalnızca PDF'ler "okunamaz" kategorisine girer ve doğrulamada net bir hata mesajıyla reddedilir (FR-08). |
 | Vector database / RAG | Uygulanmadı | Retrieval gerektiren bir belge koleksiyonu yok; her CV oturum içinde yükleniyor ve normalize profile dönüşüyor. Bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md). |
 | Encryption-at-rest | Uygulanmadı | Demo kapsamı; bilinçli sınır olarak [SECURITY.md](../SECURITY.md)'de belgelendi. |

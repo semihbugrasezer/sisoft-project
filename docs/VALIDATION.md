@@ -1,8 +1,9 @@
 # Deneysel Doğrulama
 
 Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel `qwen2.5:7b`
-sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — mock LLM istemcileriyle
-yapılan 90 birim/entegrasyon testine ek olarak. Ana proje tanımı için
+sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — taklit LLM
+istemcileriyle yürütülen otomatik test paketine ek olarak (kapsam ve sayı için
+tek kaynak: [TESTING.md](./TESTING.md)). Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
 
 ## Genel Doğrulanan Davranış

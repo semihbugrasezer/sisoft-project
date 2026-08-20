@@ -10,9 +10,11 @@ doğal dille tanımlar; yüklenen CV'ler doğrulanır, ortak bir `CandidateProfi
 **ham PDF hiçbir zaman doğrudan skorlanmaz.**
 
 Yerel-öncelikli çalışır: varsayılan yapılandırma `localhost`'taki Ollama'ya
-bağlanır, bulut servisi veya API anahtarı gerektirmez. **Ollama** (`qwen2.5:7b`)
-ve **LM Studio** (`google/gemma-4-e4b`) ile canlı doğrulanmıştır; **vLLM** aynı
-protokolü kullanır.
+bağlanır, bulut servisi veya API anahtarı gerektirmez. Referans model
+**Ollama + `qwen2.5:7b`**'dir. **LM Studio** entegrasyonu da uçtan uca
+doğrulanmıştır (`google/gemma-4-e4b`); **vLLM** aynı protokolü kullanır.
+Çıkarım kalitesi modele bağlıdır — ölçümler:
+[docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Demo
 

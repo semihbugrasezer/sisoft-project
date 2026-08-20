@@ -25,6 +25,21 @@ class LLMUnavailableError(AppError):
         self.detail = detail
 
 
+class IntentUndecidableError(AppError):
+    """Mesajın kriter tanımı mı sohbet mi olduğu belirlenemedi.
+
+    Ayrı bir tip: burada mesajı sessizce "sohbet" saymak, kullanıcının kriter
+    tanımını kaybetmek olurdu ve bunu ancak CV gönderdiğinde fark ederdi. Açık
+    hata + yönlendirme, sessiz yanlış-moddan iyidir (bkz. CriteriaService)."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            "Mesajının değerlendirme kriteri mi yoksa sohbet mi olduğunu belirleyemedim. "
+            "Tekrar dener misin? Kriterleri /criteria <kriterler> ile de tanımlayabilirsin."
+        )
+        self.detail = detail
+
+
 class NoCriteriaDefinedError(AppError):
     def __init__(self):
         super().__init__(
