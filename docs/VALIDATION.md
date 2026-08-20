@@ -2,7 +2,7 @@
 
 Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel `qwen2.5:7b`
 sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — mock LLM istemcileriyle
-yapılan 89 birim/entegrasyon testine ek olarak. Ana proje tanımı için
+yapılan 90 birim/entegrasyon testine ek olarak. Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
 
 ## Genel Doğrulanan Davranış
@@ -102,7 +102,7 @@ kapsam dışı bırakıldı.
 1. **Üretim ortamı: vLLM veya bulut GPU.** Dedicated GPU ve vLLM'in continuous
    batching'i süreyi düşürür. Bunun için ayrı bir adaptör yazmaya gerek yok —
    `OpenAICompatibleClient` zaten vLLM'in OpenAI-uyumlu `/v1/chat/completions`
-   kontratını konuşuyor (bkz. README.md → Teknoloji). Geçiş yalnızca
+   kontratını konuşuyor (bkz. [README](../README.md#mimari)). Geçiş yalnızca
    `LLM_BACKEND=openai_compatible` + sunucu adresi/model adı yapılandırmasıdır.
    vLLM bu ortamda (Apple Silicon, GPU desteklemiyor) canlı test edilemedi;
    protokol uyumluluğu resmi OpenAI-uyumlu API sözleşmesinden doğrulandı.

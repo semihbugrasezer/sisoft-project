@@ -41,7 +41,7 @@ Ayrıntı: [docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md) → Prompt Injection.
 | Sohbet geçmişi | SQLite, düz metin | `/reset` çağrılana kadar |
 | Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` çağrılana kadar |
 | Kriterler | SQLite, düz metin | `/reset` veya yeni kriter tanımına kadar |
-| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | Yalnızca analiz süresince — `/analyze` sonunda `try/finally` ile **her durumda** silinir (hata alsa bile) |
+| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | `/analyze` çalıştırılırsa `try/finally` ile her durumda silinir (analiz hata alsa bile). **Ancak:** kullanıcı `/batch` ile dosya yükleyip hiç `/analyze` veya `/cancel` yazmazsa dosyalar süresiz kalır — TTL/otomatik temizlik yoktur. Süreç sert şekilde sonlanırsa (SIGKILL) `finally` de çalışmaz. |
 | CV dosyaları (albüm/tekli yükleme) | Yalnızca bellek | Diske hiç yazılmaz |
 
 ## Üretim Öncesi Gerekenler
@@ -50,8 +50,14 @@ Bu demo aşağıdakileri **sağlamaz**. Gerçek İK verisiyle kullanmadan önce
 eklenmelidir:
 
 - **Encryption-at-rest** — SQLite verisi şifrelenmez.
-- **Otomatik veri saklama politikası** — sohbet geçmişi `/reset` çağrılmadıkça
-  süresiz kalır; TTL/otomatik silme yoktur.
+- **Otomatik veri saklama politikası** — sohbet geçmişi `/reset` çağrılmadıkça,
+  terk edilmiş `/batch` CV'leri ise `/analyze` veya `/cancel` çağrılmadıkça
+  süresiz kalır; TTL/otomatik silme yoktur. Üretimde `pending_files` için
+  `expires_at` + açılışta temizlik (ya da CV byte'larını hiç diske yazmamak)
+  gerekir.
+- **Uzak LLM ucu** — `LLM_BASE_URL` uzak bir sunucuya yönlendirilirse CV metni
+  ve sohbet içeriği o sunucuya gönderilir. Varsayılan yapılandırma yereldir;
+  uzak uç kullanılacaksa HTTPS ve sağlayıcının veri politikası doğrulanmalıdır.
 - **Erişim kontrolü** — bota erişebilen herkes analiz çalıştırabilir; rol veya
   yetkilendirme katmanı yoktur.
 - **Denetim kaydı (audit log)** — kimin hangi CV'yi ne zaman analiz ettiği

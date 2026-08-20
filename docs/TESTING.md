@@ -21,7 +21,7 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **89 test**, 15 dosyada:
+Toplam **90 test**, 15 dosyada:
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
@@ -29,7 +29,7 @@ Toplam **89 test**, 15 dosyada:
 | `test_criteria_service.py` | 10 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı, intent modeli override'ı, şema hatasında sohbete düşme |
 | `test_models.py` | 8 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
 | `test_sqlite_repo.py` | 7 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
-| `test_batch_analysis.py` | 6 | 5 CV limiti, fail-fast doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
+| `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
 | `test_cv_analysis_service.py` | 6 | Kriter kimliği zorlaması, ham metnin evaluator'a sızmaması, batch context bütçesi |
 | `test_openai_compatible_client.py` | 6 | LM Studio/vLLM uyumlu istemci, `response_format` sözleşmesi, retry, Bearer token |
 | `test_chat_service.py` | 5 | Sıcak pencere + rolling summary, özetleme hatasında veri kaybı olmaması |
@@ -77,7 +77,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  89 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  90 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 

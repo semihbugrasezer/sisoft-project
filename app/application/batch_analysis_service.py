@@ -1,7 +1,8 @@
 """Çoklu CV akışı (docs/CONCURRENCY.md).
 
 İki aşamalı hata politikası:
-1. Validation aşaması fail-fast'tir: herhangi bir dosya bozuk/şifreli/okunamazsa
+1. Validation aşaması all-or-nothing'dir: TÜM dosyalar önce paralel doğrulanır
+   (asyncio.gather), sonra herhangi biri bozuk/şifreli/okunamazsa
    PDF'in "hatalı format tespit ederse süreci kesip net hata döner" şartı gereği
    TÜM batch reddedilir, hiçbir dosya LLM'e gönderilmez.
 2. Doğrulanan metinler tek batch çağrısında ortak profillere çevrilir; ikinci batch
@@ -29,17 +30,30 @@ class BatchAnalysisService:
     async def analyze_batch(
         self, files: list[tuple[str, bytes]], criteria: list[Criterion]
     ) -> tuple[MultiAnalysisResponse, list[str]]:
-        """İkinci dönüş değeri: 20k karakter sınırı nedeniyle kırpılan dosya adları
-        (boşsa hiçbiri kırpılmadı) — JSON çıktı şeması sabit olduğu için (ödev
-        sözleşmesi, `extra="forbid"`) bu bilgiyi oraya eklemek yerine ayrı döneriz;
-        handlers.py bunu kullanıcıya JSON'dan önce ayrı bir mesajla bildirir."""
+        """İkinci dönüş değeri: metni kırpılan dosya adları (boşsa hiçbiri
+        kırpılmadı) — JSON çıktı şeması sabit olduğu için (ödev sözleşmesi,
+        `extra="forbid"`) bu bilgiyi oraya eklemek yerine ayrı döneriz;
+        handlers.py bunu kullanıcıya JSON'dan önce ayrı bir mesajla bildirir.
+
+        Kırpma İKİ ayrı yerde olabilir ve ikisi de bildirilmelidir:
+        1. Dosya başına `MAX_EXTRACTED_CHARS` (20k) — extract_text sırasında.
+        2. Batch geneli `MAX_BATCH_EXTRACTED_CHARS` (60k) — hiçbir dosya tek
+           başına 20k'yı aşmasa bile tetiklenebilir (ör. 5×15k = 75k)."""
         if len(files) > MAX_CV_COUNT:
             raise PDFValidationError(f"En fazla {MAX_CV_COUNT} CV yükleyebilirsiniz.")
         texts = await self._validate_all_or_abort(files)
-        truncated_files = [name for name, _, truncated in texts if truncated]
-        analyses = await self._cv_service.analyze_batch_from_texts(
-            [text for _, text, _ in texts], criteria
+        truncated_names = {name for name, _, truncated in texts if truncated}
+
+        # Batch bütçesi burada uygulanır (dosya adları burada bilinir), böylece
+        # batch seviyesinde kırpılan dosyalar da kullanıcıya bildirilebilir.
+        fitted_texts, batch_trimmed = CVAnalysisService.fit_batch_budget(
+            [text for _, text, _ in texts]
         )
+        truncated_names.update(texts[index][0] for index in batch_trimmed)
+        # Dosya sırasını koru (küme sırası belirsizdir).
+        truncated_files = [name for name, _, _ in texts if name in truncated_names]
+
+        analyses = await self._cv_service.analyze_batch_from_texts(fitted_texts, criteria)
 
         candidates: list[TopCandidate] = []
         for (filename, _, _), (profile, evaluation) in zip(texts, analyses, strict=True):
