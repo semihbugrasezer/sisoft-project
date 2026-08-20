@@ -10,8 +10,11 @@ Telegram arayüzünde birleştiren asenkron bir bot.
 Kullanıcı değerlendirme kriterlerini doğal dille tanımlar. Yüklenen CV'ler
 doğrulanır, ortak bir `CandidateProfile` şemasına normalize edilir ve
 yalnızca bu kullanıcı tanımlı kriterlere göre değerlendirilir — **ham PDF
-hiçbir zaman doğrudan skorlanmaz.** Arka planda Ollama, LM Studio veya vLLM
-çalışabilir.
+hiçbir zaman doğrudan skorlanmaz.**
+
+Model tamamen yereldir; hiçbir bulut servisi kullanılmaz. Canlı olarak
+**Ollama** (`qwen2.5:7b`) ve **LM Studio** (`google/gemma-4-e4b`) ile
+doğrulanmıştır; **vLLM** de aynı arayüzle desteklenir.
 
 ## Demo
 
@@ -33,7 +36,7 @@ canlı çalıştırılan 5 CV'lik toplu analiz — top-3 JSON çıktısı, ödev
 | Tekli CV analizi | Kriter skorları + güçlü/zayıf yönler + tavsiyeler |
 | Çoklu CV sıralama | En fazla 5 CV → deterministik top-3 JSON |
 | Kilitlenmeyen altyapı | Batch işlenirken bot yanıt vermeye devam eder |
-| LLM backend'leri | Ollama, LM Studio, vLLM (`LLMPort` arayüzü) |
+| LLM backend'leri | Ollama (`qwen2.5:7b`) ve LM Studio (`gemma-4-e4b`) ile canlı doğrulandı; vLLM aynı protokolü kullanır — hepsi tek `LLMPort` arayüzü arkasında |
 
 ## Mimari
 
@@ -45,13 +48,22 @@ flowchart LR
     A --> PDF[PDF Validation]
     A --> DB[(SQLite)]
     A --> LLM[LLM Port]
-    LLM --> O[Ollama]
-    LLM --> C[OpenAI-uyumlu uç]
-    C --> LS[LM Studio / vLLM]
+    LLM --> O["OllamaClient<br/>/api/chat"]
+    LLM --> C["OpenAICompatibleClient<br/>/v1/chat/completions"]
+    O --> OM["Ollama<br/>qwen2.5:7b"]
+    C --> LS["LM Studio<br/>gemma-4-e4b"]
+    C --> VL["vLLM<br/>(aynı protokol)"]
 ```
 
 Pragmatik katmanlı mimari; LLM sağlayıcıları port/adapter ile soyutlanmıştır.
 Ayrıntı, hata yayılımı ve istek akışı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
+> **Not:** "OpenAI-uyumlu" bir **protokol** adıdır, servis adı değil — LM Studio
+> ve vLLM kendi yerel sunucularını bu HTTP biçiminde (`/v1/chat/completions`)
+> sunar. Proje OpenAI servisini **kullanmaz**: `openai` paketi bağımlılıklarda
+> yoktur, tüm istekler `localhost`'a gider, API anahtarı gerekmez. Tek bir
+> adaptör hem LM Studio'yu hem vLLM'i karşıladığı için sınıf adı protokolü
+> yansıtır.
 
 ## İşlem Hattı
 
@@ -99,10 +111,32 @@ python main.py
 | `LLM_TIMEOUT` | `1200` | Tek LLM isteği için üst sınır (saniye) |
 | `DB_PATH` | `sisoft.db` | SQLite dosya yolu |
 
-`LLM_BACKEND=openai_compatible` seçilirse bot `/v1/chat/completions` üzerinden
-LM Studio veya vLLM ile konuşur; `LLM_BASE_URL`/`LLM_MODEL` yalnızca farklı bir
-sunucuya işaret eder. Application servisleri hangi backend'in çalıştığını
-bilmez.
+Motor değiştirmek yalnızca yapılandırma değişikliğidir; kod değişmez.
+Application servisleri hangi motorun çalıştığını bilmez.
+
+**Ollama (varsayılan):**
+
+```dotenv
+LLM_BACKEND=ollama
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:7b
+```
+
+**LM Studio** (canlı doğrulandı — bkz. [docs/VALIDATION.md](docs/VALIDATION.md) koşu #8):
+
+```dotenv
+LLM_BACKEND=openai_compatible
+LLM_BASE_URL=http://localhost:1234
+LLM_MODEL=google/gemma-4-e4b
+```
+
+**vLLM** (aynı protokol, port farkı):
+
+```dotenv
+LLM_BACKEND=openai_compatible
+LLM_BASE_URL=http://localhost:8000
+LLM_MODEL=<sunucuda yüklü model adı>
+```
 
 ## Kullanım
 

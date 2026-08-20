@@ -48,8 +48,14 @@ yerine Pydantic modelinin JSON Schema'sı doğrudan model sunucusuna geçirilir:
 
 | Backend | Mekanizma |
 |---|---|
-| Ollama | `/api/chat` gövdesindeki `format` alanına `model_json_schema()` |
-| OpenAI-uyumlu (LM Studio, vLLM) | `response_format: {"type": "json_schema", ...}` |
+| Ollama (test edilen model: `qwen2.5:7b`) | `/api/chat` gövdesindeki `format` alanına `model_json_schema()` |
+| LM Studio (test edilen model: `google/gemma-4-e4b`) ve vLLM — ortak `/v1/chat/completions` protokolü | `response_format: {"type": "json_schema", ...}` |
+
+> Bu protokolün yaygın adı "OpenAI-uyumlu"dur çünkü HTTP biçimini OpenAI'ın
+> API'si popülerleştirdi. Proje **OpenAI servisini kullanmaz** — `openai`
+> paketi bağımlılık değildir, istekler `localhost`'taki yerel sunuculara
+> gider. Tek adaptörün hem LM Studio'yu hem vLLM'i karşılamasının nedeni
+> ikisinin de bu aynı protokolü sunmasıdır.
 
 Dönen metin daha sonra `model_validate_json()` ile doğrulanır. Şema hatası
 olursa **bir kez** düzeltme turu denenir (modele kendi hatalı çıktısı ve
