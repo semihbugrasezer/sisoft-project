@@ -38,20 +38,24 @@ class CVAnalysisService:
     def __init__(self, llm: LLMPort):
         self._llm = llm
 
-    async def extract_text(self, pdf_bytes: bytes) -> str:
+    async def extract_text(self, pdf_bytes: bytes) -> tuple[str, bool]:
+        """Metni ve kırpılıp kırpılmadığını döner — kırpılmışsa çağıran (handlers.py)
+        kullanıcıyı bilgilendirebilsin diye (belgenin sonundaki bilgi sessizce
+        kaybolmasın)."""
         # Blocking PDF işi event loop'u bloklamasın diye thread'e atılır. max_chars
         # parser'a geçiriliyor ki bütçe dolar dolmaz sayfa okumayı durdursun —
         # PDF'i reddetmez, yalnızca gereksiz sayfa taramasını önler.
         text = await asyncio.to_thread(
             validate_and_extract_text, pdf_bytes, max_chars=MAX_EXTRACTED_CHARS
         )
-        if len(text) > MAX_EXTRACTED_CHARS:
+        truncated = len(text) > MAX_EXTRACTED_CHARS
+        if truncated:
             logger.warning(
                 "Çıkarılan metin %d karakter, %d'e kırpıldı (context/timeout koruması)",
                 len(text), MAX_EXTRACTED_CHARS,
             )
             text = text[:MAX_EXTRACTED_CHARS]
-        return text
+        return text, truncated
 
     async def analyze_from_text(
         self, text: str, criteria: list[Criterion]
@@ -159,6 +163,7 @@ class CVAnalysisService:
 
     async def analyze(
         self, pdf_bytes: bytes, criteria: list[Criterion]
-    ) -> tuple[CandidateProfile, EvaluationResult]:
-        text = await self.extract_text(pdf_bytes)
-        return await self.analyze_from_text(text, criteria)
+    ) -> tuple[CandidateProfile, EvaluationResult, bool]:
+        text, truncated = await self.extract_text(pdf_bytes)
+        profile, evaluation = await self.analyze_from_text(text, criteria)
+        return profile, evaluation, truncated

@@ -35,7 +35,7 @@ async def test_oversized_top_three_json_is_sent_as_one_document():
 
     class BatchService:
         async def analyze_batch(self, files, criteria):
-            return response
+            return response, []
 
     class Bot:
         def __init__(self):
@@ -99,7 +99,7 @@ async def test_single_analysis_report_falls_back_to_plain_text_on_bad_markdown()
 
     class CvService:
         async def analyze(self, pdf_bytes, criteria):
-            return profile, evaluation
+            return profile, evaluation, False
 
     class Bot:
         def __init__(self):
@@ -123,3 +123,41 @@ async def test_single_analysis_report_falls_back_to_plain_text_on_bad_markdown()
 
     assert bot.messages  # düz metne düşerek rapor yine de teslim edildi
     assert "Güçlü aday" in bot.messages[0]
+
+
+@pytest.mark.asyncio
+async def test_single_analysis_warns_user_when_extracted_text_was_truncated():
+    profile = CandidateProfile(
+        candidateName="Ada", contact=Contact(), summary=None, skills=[],
+        workExperiences=[], education=[], languages=[],
+    )
+    evaluation = EvaluationResult(
+        scores=[CriterionScore(criterionId="react", criterionLabel="React", score=90,
+                                evidence=["x"], reason="x")],
+        strengths=["x"], weaknesses=["x"], recommendations=["x"], hrEvaluation="iyi",
+    )
+
+    class CvService:
+        async def analyze(self, pdf_bytes, criteria):
+            return profile, evaluation, True  # truncated=True
+
+    class Bot:
+        def __init__(self):
+            self.messages = []
+
+        async def send_message(self, chat_id, text, parse_mode=None):
+            self.messages.append(text)
+
+    bot = Bot()
+    context = SimpleNamespace(
+        bot=bot,
+        application=SimpleNamespace(
+            bot_data={"container": SimpleNamespace(cv_service=CvService())}
+        ),
+    )
+    criteria = [Criterion(id="react", label="React", description="x")]
+
+    await _process_files(context, 7, [("a.pdf", b"a")], criteria)
+
+    assert "kısaltıldı" in bot.messages[0]  # rapordan önce kırpma uyarısı geldi
+    assert "iyi" in bot.messages[1]  # rapor yine de teslim edildi

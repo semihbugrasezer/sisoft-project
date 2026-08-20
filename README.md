@@ -1,5 +1,8 @@
 # Yapay Zeka Destekli Dinamik Telegram İK ve Sohbet Botu
 
+[![CI](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml/badge.svg)](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml)
+Python · python-telegram-bot · Ollama / LM Studio / vLLM · Pydantic · PyMuPDF · SQLite
+
 Kullanıcılarla günlük konularda bağlamı koruyarak sohbet eden, aynı zamanda
 konuşma içinde tanımlanan **dinamik kriterlere** göre yüklenen CV'leri analiz
 eden bir Telegram botu. Backend Python ile yazılmıştır; katmanlı bir mimariye
@@ -21,11 +24,30 @@ planda **Ollama**, **LM Studio** veya **vLLM**'den herhangi biriyle çalışabil
 - **LLM Extraction** — ham PDF metni doğrudan skorlanmaz; önce ortak bir
   JSON şemasına (yetenekler, iş deneyimi, eğitim, diller) çevrilir. Tüm
   puanlama ve analiz bu şema üzerinden yürür.
-- **Çoklu CV skorlama** — en fazla 5 CV paralel işlenir, dinamik kriterlere
-  göre puanlanır, en yüksek ortalamaya sahip ilk 3 aday yapılandırılmış bir
-  JSON çıktısı olarak döner.
+- **Çoklu CV skorlama** — en fazla 5 CV kabul edilir. PDF doğrulama ve metin
+  çıkarma `asyncio.gather` ile paralel çalışır; LLM extraction ve
+  değerlendirme, tek yerel model sunucusunu N ayrı istekle boğmamak için
+  belge başına değil, tüm belgeler için tek bir toplu (batched) yapılandırılmış
+  istek olarak yürütülür. Ortalama backend'de deterministik hesaplanır, en
+  yüksek 3 aday yapılandırılmış bir JSON çıktısı olarak döner.
 - **Kilitlenmeyen asenkron altyapı** — Telegram Long Polling üzerinden
   çalışır; çoklu CV işlenirken bot diğer sohbetlere yanıt vermeye devam eder.
+
+## Ödev Gereksinim Karşılama
+
+| Gereksinim | Karşılık |
+|---|---|
+| Genel sohbet, bağlam korunması | `ChatService` + SQLite (sıcak pencere + rolling summary) |
+| Serbest metinden dinamik kriter | `CriteriaService`, yapılandırılmış LLM çıktısı |
+| Tekli CV detaylı analiz (strengths/weaknesses/recommendations) | `CVAnalysisService` → `EvaluationResult` → Markdown rapor |
+| PDF doğrulama (bozuk/şifreli/okunamaz) | `pymupdf_parser.py`, 5 ayrı hata sınıfı |
+| LLM Extraction → ortak JSON şeması | `CandidateProfile` (`extra="forbid"`) |
+| Skorlama/filtreleme yalnızca ortak JSON üzerinden | evaluator prompt'u yalnızca `profile.model_dump_json()` alır |
+| En fazla 5 CV, asenkron/paralel işleme | `MAX_CV_COUNT=5`, PDF validation `asyncio.gather` ile paralel |
+| Top-3 JSON (beklenen şema) | `MultiAnalysisResponse`, ödev PDF §4 ile birebir |
+| Telegram, kilitlenmeyen asenkron mesajlaşma | `python-telegram-bot`, `concurrent_updates(8)` |
+| Ollama / vLLM / LM Studio entegrasyonu | `LLMPort` arayüzü, `LLM_BACKEND` ile seçilir |
+| Katmanlı mimari | `domain / application / infrastructure / presentation` |
 
 ## Mimari
 
@@ -39,6 +61,43 @@ infrastructure/          → LLM istemcileri (Ollama/OpenAI-uyumlu), PDF parser,
 Bağımlılıklar tek yönde akar: `presentation → application → domain`;
 `infrastructure` bu ikisinin arayüzlerini uygular. `container.py`
 bağımlılıkları tek yerde kurar (framework yok, basit constructor injection).
+
+```mermaid
+flowchart LR
+    U[Telegram Kullanıcı] --> H[Telegram Handlers]
+    H --> CS[Chat Service]
+    H --> CRS[Criteria Service]
+    H --> BS[Batch Analysis Service]
+    BS --> CVS[CV Analysis Service]
+
+    CS --> DB[(SQLite)]
+    CRS --> DB
+
+    CRS --> LLM[LLM Port]
+    CVS --> PDF[PDF Validator]
+    CVS --> LLM
+
+    LLM --> O[Ollama]
+    LLM --> OC[OpenAI-uyumlu uç]
+    OC --> V[LM Studio / vLLM]
+```
+
+CV analiz hattı (tekli ve çoklu ortak): ham PDF **hiçbir zaman** doğrudan
+skorlanmaz, önce ortak şemaya çevrilir.
+
+```mermaid
+flowchart TD
+    A[PDF] --> B[Doğrulama]
+    B --> C[Metin çıkarma]
+    C --> D[LLM Extraction]
+    D --> E[CandidateProfile JSON]
+    E --> F{Tekli mi çoklu mu?}
+    F -->|Tekli| G[Nitel değerlendirme]
+    F -->|Çoklu| H[Kriter bazlı skorlama]
+    G --> I[Markdown rapor]
+    H --> J[Backend'de ortalama + top-3]
+    J --> K[JSON çıktı]
+```
 
 ## Teknoloji
 
@@ -128,17 +187,31 @@ python -m pytest tests/ -v
 ```
 
 Ortalama hesaplama, top-3 sıralama, PDF doğrulama, kriter çıkarımı, sohbet
-bağlamı ve Telegram handler'ları için birim/entegrasyon testleri içerir.
+bağlamı ve Telegram handler'ları için 78 birim/entegrasyon testi içerir.
 Ayrıca gerçek yerel model sunuculara (Ollama, LM Studio) karşı canlı testlerle
-doğrulandı.
+doğrulandı — bkz. [docs/VALIDATION.md](docs/VALIDATION.md).
 
-Mock CV üretimi:
+Test verisi üretimi:
 
 ```bash
-python scripts/generate_mock_cvs.py   # mock_cvs/ altına 5 örnek CV yazar
+python scripts/generate_mock_cvs.py      # mock_cvs/ altına 5 geçerli örnek CV
+python scripts/generate_invalid_cvs.py   # mock_cvs/invalid/ altına 4 geçersiz PDF
+                                          # (bozuk, şifreli, taranmış, PDF olmayan)
 ```
 
----
+## Bilinen Sınırlamalar
 
-Tasarım kararlarının gerekçeleri, performans ölçümleri ve geliştirme süreci
-sunumda ele alınmaktadır.
+- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda
+  ~8-10 dakika sürer; darboğaz model/donanımdır, mimari değil.
+- **OCR yok** — taranmış/görsel-yalnızca PDF'ler reddedilir, OCR ile işlenmez.
+- **Batch'te CV başına paralel LLM isteği yok** — PDF validation paraleldir,
+  LLM extraction/evaluation tüm belgeler için tek bir toplu istektir (bilinçli
+  tercih, bkz. [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)).
+- **20.000 karakter extraction sınırı** — çok uzun CV'ler bu sınıra kırpılır;
+  kullanıcı Telegram'da bir uyarı mesajıyla bilgilendirilir.
+
+## Detaylı Dokümantasyon
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — dosya haritası, istek akışı, eşzamanlılık
+- [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) — mimari kararlar ve gerekçeleri
+- [docs/VALIDATION.md](docs/VALIDATION.md) — gerçek model sunucularına karşı canlı doğrulama sonuçları

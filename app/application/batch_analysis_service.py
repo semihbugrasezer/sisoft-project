@@ -23,16 +23,21 @@ class BatchAnalysisService:
 
     async def analyze_batch(
         self, files: list[tuple[str, bytes]], criteria: list[Criterion]
-    ) -> MultiAnalysisResponse:
+    ) -> tuple[MultiAnalysisResponse, list[str]]:
+        """İkinci dönüş değeri: 20k karakter sınırı nedeniyle kırpılan dosya adları
+        (boşsa hiçbiri kırpılmadı) — JSON çıktı şeması sabit olduğu için (ödev
+        sözleşmesi, `extra="forbid"`) bu bilgiyi oraya eklemek yerine ayrı döneriz;
+        handlers.py bunu kullanıcıya JSON'dan önce ayrı bir mesajla bildirir."""
         if len(files) > MAX_CV_COUNT:
             raise PDFValidationError(f"En fazla {MAX_CV_COUNT} CV yükleyebilirsiniz.")
         texts = await self._validate_all_or_abort(files)
+        truncated_files = [name for name, _, truncated in texts if truncated]
         analyses = await self._cv_service.analyze_batch_from_texts(
-            [text for _, text in texts], criteria
+            [text for _, text, _ in texts], criteria
         )
 
         candidates: list[TopCandidate] = []
-        for (filename, _), (profile, evaluation) in zip(texts, analyses):
+        for (filename, _, _), (profile, evaluation) in zip(texts, analyses):
             candidates.append(
                 TopCandidate(
                     rank=0,  # rank_top_n atayacak
@@ -44,16 +49,17 @@ class BatchAnalysisService:
                 )
             )
 
-        return MultiAnalysisResponse(
+        response = MultiAnalysisResponse(
             status="success",
             processedCVCount=len(candidates),
             userDefinedCriteria=[c.label for c in criteria],
             topCandidates=rank_top_n(candidates, n=3),
         )
+        return response, truncated_files
 
     async def _validate_all_or_abort(
         self, files: list[tuple[str, bytes]]
-    ) -> list[tuple[str, str]]:
+    ) -> list[tuple[str, str, bool]]:
         """Tüm dosyaları paralel doğrular/metnini çıkarır. Biri bile geçersizse
         tüm batch'i PDFValidationError ile reddeder (LLM'e hiç gönderilmez)."""
         outcomes = await asyncio.gather(
@@ -72,4 +78,4 @@ class BatchAnalysisService:
                 f"Şu dosyalar geçersiz olduğu için toplu analiz başlatılmadı: {bad_names}. "
                 "Sorunlu dosyaları çıkarıp tekrar gönderin."
             )
-        return [(name, text) for (name, _), text in zip(files, outcomes)]
+        return [(name, text, truncated) for (name, _), (text, truncated) in zip(files, outcomes)]

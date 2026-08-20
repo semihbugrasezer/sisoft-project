@@ -43,6 +43,11 @@ START_MESSAGE = (
     "`/reset` — sohbet geçmişini ve kriterleri sıfırlar"
 )
 
+TRUNCATED_WARNING = (
+    "⚠️ Belge çok uzun olduğu için model bağlam sınırı nedeniyle kısaltıldı; "
+    "belgenin sonundaki bilgiler analize dahil edilmemiş olabilir."
+)
+
 
 def _container(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["container"]
@@ -99,20 +104,31 @@ async def _process_files(
         if len(files) == 1:
             filename, pdf_bytes = files[0]
             try:
-                profile, evaluation = await container.cv_service.analyze(pdf_bytes, criteria)
+                profile, evaluation, truncated = await container.cv_service.analyze(
+                    pdf_bytes, criteria
+                )
             except AppError as exc:
                 await context.bot.send_message(chat_id, exc.user_message)
                 return
+            if truncated:
+                await context.bot.send_message(chat_id, TRUNCATED_WARNING)
             report = format_single_analysis(profile, evaluation)
             for chunk in chunk_message(report):
                 await _send_markdown_or_plain(context, chat_id, chunk)
             return
 
         try:
-            response = await container.batch_service.analyze_batch(files, criteria)
+            response, truncated_files = await container.batch_service.analyze_batch(
+                files, criteria
+            )
         except AppError as exc:
             await context.bot.send_message(chat_id, exc.user_message)
             return
+
+        if truncated_files:
+            await context.bot.send_message(
+                chat_id, f"{TRUNCATED_WARNING} ({', '.join(truncated_files)})"
+            )
 
         result_json = format_multi_analysis_json(response)
         if len(result_json) <= TELEGRAM_MAX_LEN:

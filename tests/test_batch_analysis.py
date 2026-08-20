@@ -20,11 +20,11 @@ class FakeCVService:
     def __init__(self, behaviors: dict[str, str]):
         self.behaviors = behaviors  # filename -> "ok" | "invalid_pdf" | "llm_fail"
 
-    async def extract_text(self, pdf_bytes: bytes) -> str:
+    async def extract_text(self, pdf_bytes: bytes) -> tuple[str, bool]:
         filename = pdf_bytes.decode()
         if self.behaviors[filename] == "invalid_pdf":
             raise PDFValidationError(f"{filename} bozuk.")
-        return f"text-of-{filename}"
+        return f"text-of-{filename}", self.behaviors[filename] == "truncated"
 
     async def analyze_batch_from_texts(self, texts: list[str], criteria):
         filenames = [text.replace("text-of-", "") for text in texts]
@@ -95,10 +95,11 @@ async def test_llm_failure_aborts_batch_instead_of_returning_incomplete_ranking(
 async def test_all_valid_produces_success_status():
     behaviors = {"a.pdf": "ok", "b.pdf": "ok"}
     service = BatchAnalysisService(FakeCVService(behaviors))
-    result = await service.analyze_batch(_files(list(behaviors)), CRITERIA)
+    result, truncated_files = await service.analyze_batch(_files(list(behaviors)), CRITERIA)
 
     assert result.status == "success"
     assert result.processedCVCount == 2
+    assert truncated_files == []
 
 
 @pytest.mark.asyncio
@@ -106,8 +107,22 @@ async def test_five_cvs_produce_only_top_three_candidates():
     names = [f"{index}.pdf" for index in range(MAX_CV_COUNT)]
     service = BatchAnalysisService(FakeCVService({name: "ok" for name in names}))
 
-    result = await service.analyze_batch(_files(names), CRITERIA)
+    result, _ = await service.analyze_batch(_files(names), CRITERIA)
 
     assert result.processedCVCount == 5
     assert len(result.topCandidates) == 3
     assert [candidate.rank for candidate in result.topCandidates] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_truncated_files_are_reported_separately_from_json_contract():
+    # Ödevin JSON şeması (MultiAnalysisResponse) `extra="forbid"` ile kilitli —
+    # kırpma bilgisini oraya eklemek yerine ayrı döneriz, handlers.py bunu
+    # kullanıcıya JSON'dan önce ayrı bir mesajla bildirir.
+    behaviors = {"a.pdf": "ok", "b.pdf": "truncated"}
+    service = BatchAnalysisService(FakeCVService(behaviors))
+
+    result, truncated_files = await service.analyze_batch(_files(list(behaviors)), CRITERIA)
+
+    assert truncated_files == ["b.pdf"]
+    assert "truncated" not in result.model_dump_json()
