@@ -1,4 +1,4 @@
-"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (README.md → Sohbet ve Bağlam Yönetimi).
+"""Daily Chat use-case: backend'de korunan tam sohbet bağlamı (docs/ARCHITECTURE.md).
 
 Bağlam yönetimi iki katmanlı: son `CHAT_HISTORY_LIMIT` mesaj ham haliyle prompt'a
 girer, penceresinin dışına taşan eski mesajlar ise silinmeden LLM ile bir "rolling

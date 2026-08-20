@@ -1,4 +1,4 @@
-"""Tekli ve batch CV akışı: validate -> extract -> evaluate (README.md → Nasıl Çalışıyor).
+"""Tekli ve batch CV akışı: validate -> extract -> evaluate (docs/LLM_PIPELINE.md).
 
 extract_text ve analyze_from_text ayrı metotlar: batch_analysis_service önce TÜM
 dosyaları doğrulayıp sonra LLM'e geçmek istiyor (fail-fast), bu yüzden PDF
@@ -33,6 +33,16 @@ logger = logging.getLogger(__name__)
 # LLM'e giden prompt'un boyutu context window/timeout riski taşır — o yüzden PDF'i
 # reddetmeden, yalnızca modele giden metni burada sınırlıyoruz.
 MAX_EXTRACTED_CHARS = 20_000
+
+# Batch akışında TÜM belgeler tek prompt'a girer. Belge başına limit tek başına
+# yetmez: 5 × 20.000 = 100.000 karakterlik bir prompt tipik bir yerel modelin
+# context window'unu (örn. 32k token ≈ 90-120k karakter) taşırabilir ve model
+# baştaki belgeleri sessizce kırpar. Bu yüzden batch için ayrı bir toplam bütçe
+# var; aşılırsa belge başına pay eşit olarak küçültülür.
+# ponytail: karakter bazlı bütçe, token bazlı değil — tokenizer'a bağımlılık
+# eklememek için kasıtlı basit tutuldu. Gerçek token sayımı gerekirse
+# tiktoken/HF tokenizer ile burada değiştirilir.
+MAX_BATCH_EXTRACTED_CHARS = 60_000
 
 
 class CVAnalysisService:
@@ -84,6 +94,27 @@ class CVAnalysisService:
 
         return profile, self._normalize_evaluation(evaluation, criteria)
 
+    @staticmethod
+    def _fit_batch_budget(texts: list[str]) -> list[str]:
+        """Toplam batch metni `MAX_BATCH_EXTRACTED_CHARS`'ı aşarsa belge başına eşit
+        paya kırpar. Kısa belgeler kendi boyutlarında kalır; yalnızca payını aşanlar
+        kırpılır, böylece bir uzun CV kısa olanların yerini yemez."""
+        total = sum(len(text) for text in texts)
+        if total <= MAX_BATCH_EXTRACTED_CHARS or not texts:
+            return texts
+
+        share = MAX_BATCH_EXTRACTED_CHARS // len(texts)
+        # Payını kullanmayan belgelerden artan bütçeyi, aşanlara yeniden dağıt.
+        spare = sum(share - len(text) for text in texts if len(text) < share)
+        over = [text for text in texts if len(text) > share]
+        bonus = spare // len(over) if over else 0
+
+        logger.warning(
+            "Batch metni %d karakter, %d bütçesine kırpılıyor (%d belge)",
+            total, MAX_BATCH_EXTRACTED_CHARS, len(texts),
+        )
+        return [text if len(text) <= share else text[: share + bonus] for text in texts]
+
     async def analyze_batch_from_texts(
         self, texts: list[str], criteria: list[Criterion]
     ) -> list[tuple[CandidateProfile, BatchCandidateEvaluation]]:
@@ -92,7 +123,7 @@ class CVAnalysisService:
         # gerçekten ilerlediğini mi yoksa takılı mı kaldığını ayırt etmek için.
         documents = [
             {"documentId": document_id, "sourceText": text}
-            for document_id, text in enumerate(texts)
+            for document_id, text in enumerate(self._fit_batch_budget(texts))
         ]
         logger.info("Batch extraction başlıyor (%d belge)", len(texts))
         t0 = time.monotonic()

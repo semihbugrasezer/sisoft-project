@@ -11,10 +11,13 @@ katmanını ve her birinin neden farklı bir mekanizma kullandığını anlatır
    Application.concurrent_updates(8)
    → aynı anda 8 update işlenebilir; biri LLM beklerken diğerleri akar
 
-2. Sohbet başına sıralama
-   chat_id → asyncio.Lock
-   → AYNI sohbette işler sıralı (yarış koşulu yok)
+2. Sohbet başına sıralama — İKİ AYRI lock ailesi
+   chat_locks_text[chat_id]      → niyet sınıflandırma + sohbet yanıtı
+   chat_locks_analysis[chat_id]  → CV analizi (tekli ve batch)
+   → AYNI sohbette her aile kendi içinde sıralı
    → FARKLI sohbetler birbirini beklemez
+   → İki aile birbirini de beklemez: batch analizi sürerken
+     aynı sohbetten sohbet etmek mümkün kalır
 
 3. Bloklayan PDF işi
    asyncio.to_thread(validate_and_extract_text, ...)
@@ -36,22 +39,40 @@ paylaşılan durumda yarış koşulu yaratır.
 
 Global tek bir kilit bunu çözerdi ama botu tümüyle seri hale getirirdi —
 ödevin "batch işlenirken bot yanıt vermeye devam etmeli" şartını bozardı.
-Bunun yerine `handlers.py` her `chat_id` için ayrı bir `asyncio.Lock` tutar:
+Bunun yerine `handlers.py` `chat_id` başına **iki ayrı** lock ailesi tutar:
 
 ```python
-lock = _chat_lock(context, chat_id)
-async with lock:
-    ...  # bu sohbetin işleri sıralı
+# Sohbet akışı: niyet sınıflandırma + yanıt tek kritik bölümde
+async with _chat_lock(context, chat_id, "text"):
+    criteria = await criteria_service.define_if_requested(chat_id, text)
+    ...
+    reply = await chat_service.reply(chat_id, text)
+
+# CV analizi: ayrı aile — sohbeti bloklamaz
+async with _chat_lock(context, chat_id, "analysis"):
+    ...
 ```
 
-Sonuç: A sohbeti 10 dakikalık bir batch analizi çalıştırırken B sohbeti
-normal hızda yanıt alır. Bu, gerçek Telegram üzerinde canlı doğrulandı
-(bkz. [VALIDATION.md](./VALIDATION.md)).
+Niyet sınıflandırmasının da kilit içinde olması önemlidir: bu bir LLM
+çağrısıdır (saniyeler sürer) ve kilit dışında bırakılırsa aynı sohbetten
+hızlıca gelen iki mesajın sınıflandırması paralel başlar; ikincisi önce
+bitip `ChatService.reply()`'a önce girebilir ve sohbet geçmişi Telegram'daki
+geliş sırasından farklı bir sırayla yazılır. Bu davranış bir regresyon
+testiyle korunuyor: `test_same_chat_messages_are_processed_in_arrival_order`.
+
+İki ailenin ayrı tutulması da kasıtlıdır: tek lock olsaydı 14 dakikalık bir
+batch analizi boyunca aynı sohbetten mesaj atmak imkânsız olurdu.
+
+Sonuç: A sohbeti uzun bir batch analizi çalıştırırken hem B sohbeti hem de
+A'nın kendi sohbet mesajları normal hızda yanıt alır. Bu, gerçek Telegram
+üzerinde canlı doğrulandı (bkz. [VALIDATION.md](./VALIDATION.md)).
 
 Aynı yarış koşulu veritabanı seviyesinde de düşünüldü:
-`try_add_pending_file` sayma ve ekleme işlemini **tek atomik SQL çağrısında**
-yapar — ayrı `count` + `insert` çağrıları, eşzamanlı iki dosyanın 5 CV
-limitini birlikte aşmasına izin verirdi (TOCTOU).
+`try_add_pending_file` içindeki `SELECT COUNT` + `INSERT` çifti repo'nun
+`asyncio.Lock`'u altında **tek kritik bölüm** olarak çalışır — iki ayrı
+`count_pending_files()` + `add_pending_file()` çağrısı, eşzamanlı iki
+dosyanın aynı sayıyı okuyup 5 CV limitini birlikte aşmasına izin verirdi
+(TOCTOU). Atomiklik tek bir SQL statement'tan değil, bu lock'tan gelir.
 
 ## Neden asyncio (Thread Pool "Yerine" Değil, Onunla Birlikte)
 

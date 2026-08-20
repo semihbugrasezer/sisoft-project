@@ -1,4 +1,4 @@
-"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (README.md → Teknik Altyapı)."""
+"""Telegram I/O katmanı. İş mantığı katmanlı backend servislerinde kalır (docs/ARCHITECTURE.md)."""
 from __future__ import annotations
 
 import asyncio
@@ -53,9 +53,21 @@ def _container(context: ContextTypes.DEFAULT_TYPE):
     return context.application.bot_data["container"]
 
 
-def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> asyncio.Lock:
-    """chat_id bazlı lock: aynı sohbetin iki analizi çakışmasın (README.md → Çoklu CV Skorlama ve Sıralama)."""
-    locks: dict[int, asyncio.Lock] = context.application.bot_data.setdefault("chat_locks", {})
+def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int, kind: str) -> asyncio.Lock:
+    """chat_id bazlı lock. `kind` ile İKİ AYRI lock ailesi tutulur — bkz. docs/CONCURRENCY.md:
+
+    - "analysis": aynı sohbetin iki CV analizi çakışmasın.
+    - "text": aynı sohbetten hızlıca gelen iki mesajın niyet-sınıflandırma +
+      sohbet yanıtı adımları iç içe geçmesin (sohbet geçmişi Telegram'a geliş
+      sırasıyla aynı sırada yazılsın).
+
+    Kasıtlı olarak AYNI lock değiller: tek bir lock kullanılsaydı 10+ dakikalık
+    bir batch analizi sırasında aynı sohbetten mesaj atmak imkânsız olurdu —
+    ödev, batch işlenirken botun yanıt vermeye devam etmesini şart koşuyor.
+    """
+    locks: dict[int, asyncio.Lock] = context.application.bot_data.setdefault(
+        f"chat_locks_{kind}", {}
+    )
     if chat_id not in locks:
         locks[chat_id] = asyncio.Lock()
     return locks[chat_id]
@@ -99,7 +111,7 @@ async def _process_files(
     doğrudan context.bot ile gönderir — hem canlı update hem debounce task'ından
     çağrılabilir olması için update nesnesine bağımlı değildir."""
     container = _container(context)
-    lock = _chat_lock(context, chat_id)
+    lock = _chat_lock(context, chat_id, "analysis")
     async with lock:
         if len(files) == 1:
             filename, pdf_bytes = files[0]
@@ -224,21 +236,28 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = update.message.text
     container = _container(context)
 
-    try:
-        criteria = await container.criteria_service.define_if_requested(chat_id, text)
-    except AppError as exc:
-        await update.message.reply_text(exc.user_message)
-        return
-    if criteria is not None:
-        await _reply_criteria_saved(update, criteria)
-        return
+    # Niyet sınıflandırması ve sohbet yanıtı TEK bir kritik bölümde tutulur.
+    # Aksi halde (concurrent_updates(8) altında) aynı sohbetten hızlıca gelen iki
+    # mesajın sınıflandırma çağrıları paralel başlar; ikincisi önce bitip
+    # ChatService.reply()'a önce girebilir ve sohbet geçmişi Telegram'daki geliş
+    # sırasından farklı bir sırayla yazılır. Sınıflandırma bir LLM çağrısı olduğu
+    # için (saniyeler sürer) bu pencere pratikte yeterince geniştir.
+    async with _chat_lock(context, chat_id, "text"):
+        try:
+            criteria = await container.criteria_service.define_if_requested(chat_id, text)
+        except AppError as exc:
+            await update.message.reply_text(exc.user_message)
+            return
+        if criteria is not None:
+            await _reply_criteria_saved(update, criteria)
+            return
 
-    try:
-        reply = await container.chat_service.reply(chat_id, text)
-    except AppError as exc:
-        await update.message.reply_text(exc.user_message)
-        return
-    await update.message.reply_text(reply)
+        try:
+            reply = await container.chat_service.reply(chat_id, text)
+        except AppError as exc:
+            await update.message.reply_text(exc.user_message)
+            return
+        await update.message.reply_text(reply)
 
 
 async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -257,7 +276,7 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (README.md → Dinamik Kriter Tanımlama ve Tekli CV Analizi).
+    # PDF caption'ında kriter cümlesi varsa önce onu kaydet (docs/LLM_PIPELINE.md).
     caption = update.message.caption
     if caption:
         try:
@@ -354,7 +373,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
     # finally: _process_files beklenmeyen (AppError olmayan) bir istisna fırlatırsa
     # bile CV BLOB'ları SQLite'ta kalmasın — kişisel veri için cleanup best-effort
-    # değil garanti olmalı (bkz. README.md → Veri Saklama ve Güvenlik).
+    # değil garanti olmalı (bkz. SECURITY.md).
     try:
         await _process_files(context, chat_id, files, criteria)
     finally:

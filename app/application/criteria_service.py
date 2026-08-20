@@ -1,4 +1,4 @@
-"""Dinamik kriter tanımlama use-case (README.md → Dinamik Kriter Tanımlama ve Tekli CV Analizi)."""
+"""Dinamik kriter tanımlama use-case (docs/LLM_PIPELINE.md)."""
 from __future__ import annotations
 
 import logging

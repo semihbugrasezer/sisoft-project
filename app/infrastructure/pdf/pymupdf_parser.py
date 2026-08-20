@@ -1,4 +1,4 @@
-"""PDF doğrulama + metin çıkarma (README.md → PDF Doğrulama ve Ortak Şemaya Dönüştürme)."""
+"""PDF doğrulama + metin çıkarma (docs/LLM_PIPELINE.md)."""
 from __future__ import annotations
 
 import pymupdf as fitz

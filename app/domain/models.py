@@ -1,4 +1,4 @@
-"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (README.md → Nasıl Çalışıyor)."""
+"""Domain şemaları. LLM çıktıları Pydantic modellerine zorlanır (docs/LLM_PIPELINE.md)."""
 from __future__ import annotations
 
 from typing import Literal
@@ -94,8 +94,8 @@ class Language(BaseModel):
 
 class CandidateProfile(BaseModel):
     """PDF'in ortak profil şemasıyla birebir. `extra="forbid"`: LLM extraction'ın
-    şema dışına taşmadığını (uydurma alan üretmediğini) garanti eder — extraction
-    kalitesi Kalite Hedefleri altında doğrudan ölçülüyor (README.md)."""
+    şema dışına taşmadığını (uydurma alan üretmediğini) garanti eder
+    (docs/LLM_PIPELINE.md)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -191,14 +191,30 @@ class BatchEvaluationResult(BaseModel):
 # --- Çoklu CV nihai çıktı — ödev PDF §4 şemasıyla birebir ----------------
 
 class TopCandidate(BaseModel):
+    """Alan adları ödev PDF §4 ile birebir. Aralıklar da sözleşmenin parçası:
+    `extra="forbid"` yalnızca *fazladan alan* eklenmesini engeller, anlamsız bir
+    değeri (rank=0, score=999) engellemez — bu yüzden sınırlar açıkça verilir."""
+
     model_config = ConfigDict(extra="forbid")
 
-    rank: int
+    # rank alan seviyesinde sınırlanmaz: `rank_top_n` çağrılmadan önce aday
+    # nesneleri rank=0 ile kurulur (sıralama henüz bilinmiyor). Asıl sözleşme
+    # MultiAnalysisResponse.ranks_are_sequential'da doğrulanır — orası kullanıcıya
+    # giden çıktıdır ve 1..N sıralılığını kontrol etmek `ge=1` demekten daha güçlüdür.
+    rank: int = Field(ge=0)
     candidateName: str
     pdfFileName: str
     dynamicScores: dict[str, int]
-    averageScore: float
+    averageScore: float = Field(ge=0, le=100)
     hrEvaluation: str
+
+    @field_validator("dynamicScores")
+    @classmethod
+    def scores_within_range(cls, value: dict[str, int]) -> dict[str, int]:
+        out_of_range = {k: v for k, v in value.items() if not 0 <= v <= 100}
+        if out_of_range:
+            raise ValueError(f"Skorlar 0-100 aralığında olmalı: {out_of_range}")
+        return value
 
 
 class MultiAnalysisResponse(BaseModel):
@@ -207,7 +223,15 @@ class MultiAnalysisResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str
-    processedCVCount: int
-    userDefinedCriteria: list[str]
-    topCandidates: list[TopCandidate]
+    status: Literal["success"]
+    processedCVCount: int = Field(ge=1, le=MAX_CV_COUNT)
+    userDefinedCriteria: list[str] = Field(min_length=1)
+    topCandidates: list[TopCandidate] = Field(max_length=3)
+
+    @model_validator(mode="after")
+    def ranks_are_sequential(self):
+        expected = list(range(1, len(self.topCandidates) + 1))
+        actual = [candidate.rank for candidate in self.topCandidates]
+        if actual != expected:
+            raise ValueError(f"rank değerleri 1..N sırasıyla olmalı, alınan: {actual}")
+        return self

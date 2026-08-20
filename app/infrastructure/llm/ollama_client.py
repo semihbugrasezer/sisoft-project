@@ -1,5 +1,5 @@
 """Ollama /api/chat adapter. Structured output için Pydantic JSON Schema kullanılır
-(prompt içine 'JSON döndür' yazmaktan daha güvenilir). Bkz. README.md → Teknik Altyapı.
+(prompt içine 'JSON döndür' yazmaktan daha güvenilir). Bkz. docs/ARCHITECTURE.md.
 """
 from __future__ import annotations
 

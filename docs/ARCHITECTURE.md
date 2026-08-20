@@ -75,7 +75,7 @@ main.py                      Entrypoint: config → container → polling
 
 | Katman | Bilir | Bilmez |
 |---|---|---|
-| `domain` | Pydantic şemaları, saf skorlama fonksiyonları, `LLMPort` arayüzü, hata hiyerarşisi | Hiçbir dış kütüphane — `scoring.py` test edilirken ne LLM ne Telegram gerekir |
+| `domain` | Pydantic şemaları, saf skorlama fonksiyonları, `LLMPort` arayüzü, hata hiyerarşisi | Telegram, HTTP, veritabanı, dosya sistemi — hiçbir I/O. (Pydantic bir dış bağımlılıktır ama saf bir veri-doğrulama kütüphanesidir; `scoring.py` test edilirken ne LLM ne Telegram gerekir.) |
 | `application` | Use-case orkestrasyonu, `domain` modelleri, `LLMPort` | Hangi LLM backend'inin çalıştığını (`OllamaClient` mı `OpenAICompatibleClient` mı) |
 | `infrastructure` | httpx, PyMuPDF, sqlite3 — gerçek dış dünya | İş mantığını |
 | `presentation/telegram` | Telegram'a özgü I/O, komut yönlendirme, formatlama | İş mantığını — handler her zaman bir application servisini çağırır ve sonucu formatlar |

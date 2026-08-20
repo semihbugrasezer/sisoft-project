@@ -1,6 +1,11 @@
 import json
 
-from app.domain.models import CandidateProfile, EvaluationResult, MultiAnalysisResponse
+from app.domain.models import (
+    CandidateProfile,
+    EvaluationResult,
+    MultiAnalysisResponse,
+    TopCandidate,
+)
 from app.presentation.telegram.formatter import (
     chunk_message,
     format_multi_analysis_json,
@@ -33,15 +38,28 @@ def test_single_analysis_escapes_dynamic_markdown():
 
 
 def test_multi_analysis_output_is_valid_json():
+    # Gerçekçi minimum: batch en az 1 CV ve en az 1 kriterle çalışır — şema da
+    # bunu zorunlu kılar (processedCVCount>=1, userDefinedCriteria min_length=1).
     output = format_multi_analysis_json(
         MultiAnalysisResponse(
             status="success",
-            processedCVCount=0,
-            userDefinedCriteria=[],
-            topCandidates=[],
+            processedCVCount=1,
+            userDefinedCriteria=["React"],
+            topCandidates=[
+                TopCandidate(
+                    rank=1,
+                    candidateName="Ada",
+                    pdfFileName="ada.pdf",
+                    dynamicScores={"React": 90},
+                    averageScore=90.0,
+                    hrEvaluation="uygun",
+                )
+            ],
         )
     )
-    assert json.loads(output)["status"] == "success"
+    parsed = json.loads(output)
+    assert parsed["status"] == "success"
+    assert parsed["topCandidates"][0]["rank"] == 1
 
 
 def test_markdown_chunks_prefer_line_boundaries():
