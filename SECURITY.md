@@ -41,7 +41,7 @@ Ayrıntı: [docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md) → Prompt Injection.
 | Sohbet geçmişi | SQLite, düz metin | `/reset` çağrılana kadar |
 | Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` çağrılana kadar |
 | Kriterler | SQLite, düz metin | `/reset` veya yeni kriter tanımına kadar |
-| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | `/analyze` çalıştırılırsa `try/finally` ile her durumda silinir (analiz hata alsa bile). **Ancak:** kullanıcı `/batch` ile dosya yükleyip hiç `/analyze` veya `/cancel` yazmazsa dosyalar süresiz kalır — TTL/otomatik temizlik yoktur. Süreç sert şekilde sonlanırsa (SIGKILL) `finally` de çalışmaz. |
+| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze` çalıştırılırsa `try/finally` ile hemen silinir (analiz hata alsa bile); (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa veya süreç sert şekilde sonlanıp `finally` çalışmazsa, bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. |
 | CV dosyaları (albüm/tekli yükleme) | Yalnızca bellek | Diske hiç yazılmaz |
 
 ## Üretim Öncesi Gerekenler
@@ -50,11 +50,9 @@ Bu demo aşağıdakileri **sağlamaz**. Gerçek İK verisiyle kullanmadan önce
 eklenmelidir:
 
 - **Encryption-at-rest** — SQLite verisi şifrelenmez.
-- **Otomatik veri saklama politikası** — sohbet geçmişi `/reset` çağrılmadıkça,
-  terk edilmiş `/batch` CV'leri ise `/analyze` veya `/cancel` çağrılmadıkça
-  süresiz kalır; TTL/otomatik silme yoktur. Üretimde `pending_files` için
-  `expires_at` + açılışta temizlik (ya da CV byte'larını hiç diske yazmamak)
-  gerekir.
+- **Sohbet geçmişi için TTL yok** — `/reset` çağrılmadıkça süresiz kalır.
+  (Bekleyen CV'ler için TTL uygulanmıştır, yukarıya bakın.) Üretimde sohbet
+  verisi için de bir saklama politikası tanımlanmalıdır.
 - **Uzak LLM ucu** — `LLM_BASE_URL` uzak bir sunucuya yönlendirilirse CV metni
   ve sohbet içeriği o sunucuya gönderilir. Varsayılan yapılandırma yereldir;
   uzak uç kullanılacaksa HTTPS ve sağlayıcının veri politikası doğrulanmalıdır.

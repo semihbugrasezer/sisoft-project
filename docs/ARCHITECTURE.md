@@ -169,4 +169,6 @@ işi, LLM istek limiti) ayrı bir dokümanda ayrıntılı anlatılıyor:
   [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
 - **20.000 karakter extraction sınırı** — çok uzun CV'ler kırpılır; kullanıcı
   uyarılır.
-- **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md).
+- **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md). Bekleyen CV'ler
+  için `CV_RETENTION_HOURS` ile açılışta TTL temizliği yapılır; sohbet geçmişi
+  için TTL yoktur.

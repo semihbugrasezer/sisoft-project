@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 import time
+
+logger = logging.getLogger(__name__)
 
 # Modele gönderilen sohbet geçmişi bu kadar mesajla sınırlı (~son 20 tur) — context
 # window taşmasını ve LLM_TIMEOUT'a yaklaşmayı önler (bkz. README "Bilinen sınırlamalar").
@@ -222,6 +225,25 @@ class SQLiteRepo:
     async def clear_pending_files(self, chat_id: int) -> None:
         async with self._lock:
             await asyncio.to_thread(self._exec_sync, "DELETE FROM pending_files WHERE chat_id = ?", (chat_id,))
+
+    async def purge_expired_pending_files(self, max_age_seconds: float) -> int:
+        """Verilen yaştan eski bekleyen CV'leri siler ve silinen sayısını döner.
+
+        Neden gerekli: `/analyze` akışı `try/finally` ile temizlik yapar ama kullanıcı
+        `/batch` ile dosya yükleyip hiç `/analyze` veya `/cancel` yazmazsa dosyalar
+        süresiz kalırdı; süreç sert şekilde sonlanırsa `finally` de çalışmaz. CV'ler
+        kişisel veridir — süresiz saklanmamalı (bkz. SECURITY.md)."""
+        cutoff = time.time() - max_age_seconds
+        async with self._lock:
+            deleted = await asyncio.to_thread(self._purge_expired_pending_files_sync, cutoff)
+        if deleted:
+            logger.info("%d adet süresi geçmiş bekleyen CV silindi", deleted)
+        return deleted
+
+    def _purge_expired_pending_files_sync(self, cutoff: float) -> int:
+        cursor = self._conn.execute("DELETE FROM pending_files WHERE ts < ?", (cutoff,))
+        self._conn.commit()
+        return cursor.rowcount
 
     async def count_pending_files(self, chat_id: int) -> int:
         async with self._lock:

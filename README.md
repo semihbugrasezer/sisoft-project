@@ -114,6 +114,7 @@ python main.py
 | `LLM_MAX_CONCURRENCY` | `3` | Sunucuya aynı anda giden istek limiti |
 | `LLM_TIMEOUT` | `1200` | Tek LLM isteği için üst sınır (saniye) |
 | `DB_PATH` | `sisoft.db` | SQLite dosya yolu |
+| `CV_RETENTION_HOURS` | `24` | Bekleyen (analiz edilmemiş) CV'lerin azami saklama süresi; açılışta eskiler silinir. `0` = kapalı |
 
 Motor değiştirmek yalnızca yapılandırma değişikliğidir; kod değişmez.
 Application servisleri hangi motorun çalıştığını bilmez.
@@ -172,7 +173,7 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-103 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+105 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
 canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
 **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 

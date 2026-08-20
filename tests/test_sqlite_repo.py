@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from app.infrastructure.persistence.sqlite_repo import CHAT_HISTORY_LIMIT, SQLiteRepo
@@ -113,3 +115,36 @@ async def test_try_add_pending_file_enforces_limit_atomically(tmp_path):
     await repo.close()
 
     assert rejected is False
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_pending_files_removes_only_old_entries(tmp_path):
+    # CV kişisel veridir: /batch ile yüklenip hiç /analyze edilmemiş dosyalar
+    # süresiz kalmamalı (bkz. SECURITY.md).
+    repo = SQLiteRepo(str(tmp_path / "t.db"))
+    await repo.add_pending_file(1, "eski.pdf", b"a")
+    await repo.add_pending_file(1, "yeni.pdf", b"b")
+
+    # "eski.pdf" kaydını 48 saat geriye al.
+    repo._conn.execute(
+        "UPDATE pending_files SET ts = ? WHERE filename = ?",
+        (time.time() - 48 * 3600, "eski.pdf"),
+    )
+    repo._conn.commit()
+
+    deleted = await repo.purge_expired_pending_files(24 * 3600)
+
+    assert deleted == 1
+    remaining = await repo.get_pending_files(1)
+    assert [name for name, _ in remaining] == ["yeni.pdf"]
+    await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_purge_keeps_everything_when_nothing_is_expired(tmp_path):
+    repo = SQLiteRepo(str(tmp_path / "t2.db"))
+    await repo.add_pending_file(1, "a.pdf", b"a")
+
+    assert await repo.purge_expired_pending_files(24 * 3600) == 0
+    assert len(await repo.get_pending_files(1)) == 1
+    await repo.close()
