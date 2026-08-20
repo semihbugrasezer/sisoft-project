@@ -137,6 +137,12 @@ kopyası değilse (parafraz) bir düzeltme turu daha çalışır
 (`_all_labels_exact`) — ödev PDF'indeki örnek JSON kullanıcının kendi
 ifadesinin yansıtılmasını bekliyor.
 
+Niyet sınıflandırması şemaya uygun JSON üretemezse mesaj doğrudan "chat"
+sayılmaz — bu, kullanıcının kriter tanımını sessizce kaybetmek olurdu. Önce
+ana modelle tekrar denenir (isteğe bağlı `LLM_INTENT_MODEL` yapılandırılmışsa
+sorun büyük olasılıkla onun kapasitesidir, bkz. VALIDATION.md koşu #5); iki
+bağımsız deneme de başarısız olursa sohbete düşülür ve durum loglanır.
+
 Anahtar kelime tabanlı bir kısayol (örn. "kriter/skorla" kelimeleri yoksa
 LLM'e hiç gitme) denenip **reddedildi**: "React tecrübesi benim için önemli"
 cümlesinde tetikleyici kelime yoktur ama geçerli bir kriter tanımıdır. Bkz.

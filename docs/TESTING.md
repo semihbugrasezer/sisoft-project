@@ -21,12 +21,12 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **99 test**, 16 dosyada:
+Toplam **103 test**, 16 dosyada:
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
 | `test_pdf_parser.py` | 16 | 6 doğrulama senaryosu (boş/imza/bozuk/şifreli/sayfasız/metinsiz), farklı layout'lar (tek sütun, iki sütun, çok sayfa, tablo), kırpma sınırı ve tam-sınır durumu |
-| `test_criteria_service.py` | 10 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı, intent modeli override'ı, şema hatasında sohbete düşme |
+| `test_criteria_service.py` | 12 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı, intent modeli override'ı, şema hatasında sohbete düşme |
 | `test_models.py` | 8 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
 | `test_sqlite_repo.py` | 7 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
 | `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
@@ -36,7 +36,7 @@ Toplam **99 test**, 16 dosyada:
 | `test_config.py` | 5 | Backend seçimi, geçersiz değer reddi, zorunlu token |
 | `test_scoring.py` | 5 | Ortalama hesaplama, top-3 sıralama, eşitlik durumu |
 | `test_handlers.py` | 5 | Telegram akışı, Markdown fallback, kırpma uyarısı, büyük JSON'un dosya olarak gönderilmesi, sohbet sırası/kilit davranışı |
-| `test_media_group_collector.py` | 4 | Albüm toplama, debounce, limit |
+| `test_media_group_collector.py` | 6 | Albüm toplama, debounce, limit, kapatılmış gruba geç gelen dosya |
 | `test_formatter.py` | 3 | Markdown rapor, JSON çıktı biçimi |
 | `test_ollama_client.py` | 2 | `/api/chat` sözleşmesi, şema retry'ı |
 | `test_grounding.py` | 7 | candidateName kaynak-doğrulama: aksanlı isim bozulması, uydurma ad, sıralama/büyük-küçük harf toleransı |
@@ -68,6 +68,8 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 | `test_more_than_five_cvs_is_rejected_before_processing` | 5 CV limiti LLM'e gitmeden önce uygulanmalı |
 | `test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles` | Ham CV metninin evaluator prompt'una sızmaması (ödevin çekirdek şartı) |
 | `test_model_corrupted_turkish_name_is_rejected` / `test_corrupted_candidate_name_triggers_retry_and_is_fixed` | Canlı koşuda model Türkçe aksanlı ismi bozdu; bozuk ad sessizce rapora giriyordu |
+| `test_late_file_after_group_is_processed_is_rejected` | 5 dosya dolup grup işlendikten sonra geç gelen 6. update yeni bir batch başlatabiliyordu |
+| `test_intent_failure_retries_with_main_model_before_falling_back_to_chat` | Küçük intent modeli JSON üretemeyince kullanıcının kriter tanımı sessizce sohbete düşüyordu |
 | `test_same_chat_messages_are_processed_in_arrival_order` | Niyet sınıflandırması kilit dışındaydı; aynı sohbetten hızlı gelen iki mesaj sohbet geçmişine ters sırada yazılabiliyordu |
 | `test_batch_budget_trims_only_when_total_exceeds_limit` | 5 × 20.000 karakterlik batch prompt'u yerel modelin context window'unu taşırabiliyordu |
 
@@ -79,7 +81,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  99 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  103 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 

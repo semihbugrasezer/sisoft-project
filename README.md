@@ -172,7 +172,7 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-99 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+103 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
 canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
 **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 

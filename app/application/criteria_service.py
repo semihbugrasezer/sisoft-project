@@ -70,16 +70,34 @@ class CriteriaService:
                 CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult, model=self._intent_model
             )
         except LLMOutputValidationError:
-            # Niyet sınıflandırması şemaya uygun JSON üretemedi (iki denemede de) —
-            # canlı testte zayıf bir modelle (0.5B) gerçekleşti, bkz. README.md →
-            # Teknik Altyapı. Kullanıcıyı hata mesajıyla çıkmaza sokmak yerine mesajı
-            # "chat" varsayıp normal sohbete düşürüyoruz: kriter tanımlamak isteyen
-            # kullanıcı ya modelin sonraki denemede doğru sınıflandırmasıyla ya da
-            # açık `/criteria` komutuyla amacına ulaşır — hard-fail yerine soft-fail.
+            # Niyet sınıflandırması şemaya uygun JSON üretemedi. Canlı testte zayıf
+            # bir modelle (0.5B) gerçekleşti — bkz. docs/VALIDATION.md koşu #5.
+            # Doğrudan "chat" varsaymak SESSİZ bir hata olurdu: kullanıcının kriter
+            # tanımı sohbet mesajı gibi yanıtlanır ve kriterler hiç kaydedilmez.
+            # Bu yüzden önce ANA modelle tekrar denenir (isteğe bağlı küçük intent
+            # modeli yapılandırılmışsa, sorun büyük olasılıkla onun kapasitesidir).
+            if self._intent_model is None:
+                logger.warning(
+                    "Intent sınıflandırması şema hatası verdi (ana model), "
+                    "mesaj chat olarak işleniyor"
+                )
+                return None
             logger.warning(
-                "Intent sınıflandırması şema hatası verdi, mesaj chat olarak işleniyor"
+                "Intent sınıflandırması şema hatası verdi (%s), ana modelle tekrar deneniyor",
+                self._intent_model,
             )
-            return None
+            try:
+                result = await self._llm.structured_chat(
+                    CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult
+                )
+            except LLMOutputValidationError:
+                # Ana model de sınıflandıramadı. Burada sohbete düşmek hâlâ en az
+                # zararlı davranıştır (kullanıcı `/criteria` ile açıkça tanımlayabilir),
+                # ama artık iki bağımsız denemeden sonra ve açıkça loglanarak.
+                logger.warning(
+                    "Intent sınıflandırması ana modelde de başarısız, mesaj chat olarak işleniyor"
+                )
+                return None
         if result.intent == "chat":
             return None
         criteria = self._grounded_criteria(result.criteria, free_text)
