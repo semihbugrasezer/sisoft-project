@@ -57,9 +57,10 @@ def load_config() -> Config:
         llm_api_key=os.getenv("LLM_API_KEY") or None,
         db_path=os.getenv("DB_PATH", "sisoft.db"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT", "1200")),
-        # Bekleyen (henüz /analyze edilmemiş) CV'lerin azami saklama süresi. CV
-        # kişisel veridir: kullanıcı /batch ile yükleyip hiç /analyze veya /cancel
-        # yazmazsa dosyalar süresiz kalırdı. Açılışta bu yaştan eskiler silinir
-        # (bkz. SECURITY.md). 0 veya negatif değer temizliği devre dışı bırakır.
+        # Bekleyen (henüz /analyze edilmemiş) CV'ler için AÇILIŞ temizliği yaş
+        # eşiği. Temizlik yalnız post_init'te çalışır; kesintisiz çalışan bir botta
+        # gerçek üst sınır değildir (bilinçli tercih — periyodik bir scheduler bu
+        # ölçekte karşılıksız). CV kişisel veridir, bkz. SECURITY.md.
+        # 0 veya negatif değer temizliği devre dışı bırakır.
         cv_retention_hours=float(os.getenv("CV_RETENTION_HOURS", "24")),
     )

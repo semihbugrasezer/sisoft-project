@@ -90,6 +90,32 @@ pip check       →  bağımlılık tutarlılığı
 `main` korumalıdır: bu kontroller geçmeden ve bir onay alınmadan merge
 edilemez.
 
+## Kabul Testi (Gerçek Model)
+
+`scripts/validate_assignment.py` ödev PDF'indeki senaryoyu **gerçek** model
+sunucusuna karşı çalıştırır. Otomatik testlerden farklı bir soruyu yanıtlar:
+*"yapılandırılmış model ödevin gerçek senaryosunu geçebiliyor mu?"*
+
+```bash
+python scripts/validate_assignment.py           # kriterler + tekli CV (~3 dk)
+python scripts/validate_assignment.py --full    # + 5 CV batch, top-3 (~15 dk)
+```
+
+Kontrol ettikleri:
+
+- Serbest metin mesajı kriter olarak sınıflandırıldı mı
+- **Kriter eksiksizliği: 3/3** — şema-geçerli olması eksiksiz olduğu anlamına
+  gelmez; canlı koşuda bir model üç kriterden yalnız birini çıkarmıştı
+- Ortak JSON şemasına çıkarım (`candidateName`, yetenekler)
+- Her kritere puan verildi mi, nitel rapor alanları dolu mu
+- `--full`: `processedCVCount`, `topCandidates` sayısı, `rank` sırası,
+  `userDefinedCriteria` eşleşmesi, her adayda tüm skorlar
+- **Ortalamalar ve sıralama bağımsız olarak yeniden hesaplanır** — script
+  `scoring.py`'ye güvenmez; aksi halde bir skorlama hatası testi de yanıltırdı
+
+CI'a konmaz: gerçek LLM deterministik değildir ve dakikalar sürer. Bir modelin
+"desteklenen" sayılması için bu script'i geçmesi beklenir.
+
 ## Bilinçli Olarak Yapılmayanlar
 
 - **Coverage eşiği yok.** Ölçülmeden konan bir yüzde hedefi (örn. "%90")

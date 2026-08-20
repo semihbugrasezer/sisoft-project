@@ -41,7 +41,7 @@ Ayrıntı: [docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md) → Prompt Injection.
 | Sohbet geçmişi | SQLite, düz metin | `/reset` çağrılana kadar |
 | Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` çağrılana kadar |
 | Kriterler | SQLite, düz metin | `/reset` veya yeni kriter tanımına kadar |
-| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze` çalıştırılırsa `try/finally` ile hemen silinir (analiz hata alsa bile); (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa veya süreç sert şekilde sonlanıp `finally` çalışmazsa, bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. |
+| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze` çalıştırılırsa `try/finally` ile hemen silinir (analiz hata alsa bile); (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa veya süreç sert şekilde sonlanıp `finally` çalışmazsa, bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. Temizlik yalnız açılışta çalıştığı için kesintisiz çalışan bir botta bu bir üst sınır garantisi değildir. |
 | CV dosyaları (albüm/tekli yükleme) | Yalnızca bellek | Diske hiç yazılmaz |
 
 ## Üretim Öncesi Gerekenler

@@ -83,7 +83,7 @@ Başlıca ayarlar (tamamı `.env.example` içinde açıklamalarıyla birlikte):
 | `LLM_BACKEND` | `ollama` | `ollama` veya `openai_compatible` (LM Studio / vLLM) |
 | `LLM_BASE_URL` | `http://localhost:11434` | LLM sunucu adresi |
 | `LLM_MODEL` | `qwen2.5:7b` | Kullanılacak model |
-| `CV_RETENTION_HOURS` | `24` | Analiz edilmemiş CV'lerin azami saklama süresi |
+| `CV_RETENTION_HOURS` | `24` | Açılış temizliğinde kullanılan yaş eşiği: bu yaştan eski, analiz edilmemiş CV'ler silinir |
 
 LM Studio'ya geçmek için yalnızca üç satır değişir (`LLM_BACKEND=openai_compatible`,
 `LLM_BASE_URL=http://localhost:1234`, `LLM_MODEL=google/gemma-4-e4b`); kod
@@ -112,8 +112,17 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-Birim/entegrasyon testleri taklit LLM ile çalışır; ayrıca gerçek model
-sunucularına karşı canlı koşular yapılmıştır. Ayrıntı:
+Birim/entegrasyon testleri taklit LLM ile çalışır. Ödevin **birebir senaryosunu
+gerçek modele karşı** çalıştıran ayrı bir kabul testi de vardır — kriterlerin
+eksiksiz çıkarıldığını ve top-3 JSON sözleşmesini (ortalamaları bağımsız yeniden
+hesaplayarak) doğrular:
+
+```bash
+python scripts/validate_assignment.py           # kriterler + tekli CV
+python scripts/validate_assignment.py --full    # + 5 CV batch, top-3
+```
+
+Ayrıntı:
 **[docs/TESTING.md](docs/TESTING.md)** ve **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 
 ## Tasarım Kararları
