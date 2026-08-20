@@ -51,7 +51,7 @@ app/
 │   ├── chat_service.py     Sohbet + bağlam (sıcak pencere + rolling summary)
 │   ├── criteria_service.py Serbest metinden dinamik kriter çıkarımı
 │   ├── cv_analysis_service.py   Tekli/batch CV: validate → extract → evaluate
-│   └── batch_analysis_service.py  Çoklu CV orkestrasyonu, fail-fast validation
+│   └── batch_analysis_service.py  Çoklu CV orkestrasyonu, all-or-nothing ön doğrulama
 │
 ├── infrastructure/         Dış dünya adaptörleri
 │   ├── llm/
@@ -116,7 +116,7 @@ Application / Infrastructure                │
 
 İki nokta özellikle önemli:
 
-- **Batch'te fail-fast:** bir dosya bile geçersizse hiçbir dosya LLM'e
+- **Batch'te all-or-nothing ön doğrulama:** bir dosya bile geçersizse hiçbir dosya LLM'e
   gönderilmez; kısmi sonuç yerine net bir hata döner.
 - **Garantili temizlik:** `/analyze` beklenmeyen bir istisna alsa bile
   bekleyen CV verisi `try/finally` ile silinir (bkz. [SECURITY.md](../SECURITY.md)).
@@ -142,7 +142,8 @@ sequenceDiagram
 ```
 
 Çoklu CV akışı aynı adımları izler, ancak `BatchAnalysisService` önce tüm
-dosyaları paralel doğrular (`asyncio.gather`, fail-fast) ve LLM extraction/
+dosyaları paralel doğrular (`asyncio.gather`; ilk hatada kesmez — hepsi
+biter, sonra tamamı reddedilir) ve LLM extraction/
 evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
 çalıştırır — bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Batch başına
 iki LLM çağrısı".

@@ -1,8 +1,8 @@
 """Tekli ve batch CV akışı: validate -> extract -> evaluate (docs/LLM_PIPELINE.md).
 
 extract_text ve analyze_from_text ayrı metotlar: batch_analysis_service önce TÜM
-dosyaları doğrulayıp sonra LLM'e geçmek istiyor (fail-fast), bu yüzden PDF
-validation'ı ile LLM adımları ayrıştırılabilir olmalı. Batch yolu tüm profilleri
+dosyaları doğrulayıp sonra LLM'e geçmek istiyor (all-or-nothing ön doğrulama),
+bu yüzden PDF validation'ı ile LLM adımları ayrıştırılabilir olmalı. Batch yolu tüm profilleri
 tek extraction çağrısında, tüm skorları yalnız normalize profillerden ikinci çağrıda üretir.
 """
 from __future__ import annotations
@@ -95,13 +95,18 @@ class CVAnalysisService:
         return profile, self._normalize_evaluation(evaluation, criteria)
 
     @staticmethod
-    def _fit_batch_budget(texts: list[str]) -> list[str]:
+    def fit_batch_budget(texts: list[str]) -> tuple[list[str], list[int]]:
         """Toplam batch metni `MAX_BATCH_EXTRACTED_CHARS`'ı aşarsa belge başına eşit
         paya kırpar. Kısa belgeler kendi boyutlarında kalır; yalnızca payını aşanlar
-        kırpılır, böylece bir uzun CV kısa olanların yerini yemez."""
+        kırpılır, böylece bir uzun CV kısa olanların yerini yemez.
+
+        `(kırpılmış_metinler, kırpılan_belge_indeksleri)` döner. İkinci değer önemli:
+        dosya başına 20k limitini aşmayan belgeler bile burada kırpılabilir (5×15k =
+        75k > 60k) ve kullanıcı bundan haberdar edilmelidir — aksi halde sessiz veri
+        kaybı olur (bkz. BatchAnalysisService.analyze_batch)."""
         total = sum(len(text) for text in texts)
         if total <= MAX_BATCH_EXTRACTED_CHARS or not texts:
-            return texts
+            return texts, []
 
         share = MAX_BATCH_EXTRACTED_CHARS // len(texts)
         # Payını kullanmayan belgelerden artan bütçeyi, aşanlara yeniden dağıt.
@@ -113,7 +118,15 @@ class CVAnalysisService:
             "Batch metni %d karakter, %d bütçesine kırpılıyor (%d belge)",
             total, MAX_BATCH_EXTRACTED_CHARS, len(texts),
         )
-        return [text if len(text) <= share else text[: share + bonus] for text in texts]
+        fitted: list[str] = []
+        trimmed: list[int] = []
+        for index, text in enumerate(texts):
+            if len(text) <= share:
+                fitted.append(text)
+            else:
+                fitted.append(text[: share + bonus])
+                trimmed.append(index)
+        return fitted, trimmed
 
     async def analyze_batch_from_texts(
         self, texts: list[str], criteria: list[Criterion]
@@ -121,9 +134,13 @@ class CVAnalysisService:
         # İki toplu LLM çağrısının süresi loglanır — batch tek yerel model
         # sunucusunda dakikalar sürebilir (bkz. docs/VALIDATION.md); bir isteğin
         # gerçekten ilerlediğini mi yoksa takılı mı kaldığını ayırt etmek için.
+        # Çağıran (BatchAnalysisService) bütçeyi zaten uygulayıp kullanıcıyı
+        # bilgilendirmiş olabilir; bu durumda burası no-op'tur. Yine de çağrılır ki
+        # bu metot doğrudan kullanıldığında da context window koruması olsun.
+        fitted_texts, _ = self.fit_batch_budget(texts)
         documents = [
             {"documentId": document_id, "sourceText": text}
-            for document_id, text in enumerate(self._fit_batch_budget(texts))
+            for document_id, text in enumerate(fitted_texts)
         ]
         logger.info("Batch extraction başlıyor (%d belge)", len(texts))
         t0 = time.monotonic()

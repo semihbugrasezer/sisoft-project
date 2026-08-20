@@ -126,3 +126,36 @@ async def test_truncated_files_are_reported_separately_from_json_contract():
 
     assert truncated_files == ["b.pdf"]
     assert "truncated" not in result.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_batch_level_truncation_is_reported_to_user():
+    # Regresyon: hiçbir dosya tek başına MAX_EXTRACTED_CHARS'ı (20k) aşmasa bile
+    # toplam batch bütçesi (60k) aşılırsa metin kırpılır. truncated_files bu
+    # durumu da kapsamalı — aksi halde kullanıcı sessiz veri kaybı yaşar.
+    names = [f"{i}.pdf" for i in range(5)]
+    behaviors = dict.fromkeys(names, "ok")
+
+    class BigCVService(FakeCVService):
+        async def extract_text(self, pdf_bytes):
+            # 5 × 15k = 75k > 60k bütçe; ama her biri 20k limitinin altında,
+            # yani dosya-başı truncated bayrağı False.
+            return "x" * 15_000, False
+
+        async def analyze_batch_from_texts(self, texts, criteria):
+            # Bu testte önemli olan kırpma bildirimi; profil içeriği değil.
+            profile = CandidateProfile(
+                candidateName="Aday", contact={}, summary=None, skills=[],
+                workExperiences=[], education=[], languages=[],
+            )
+            evaluation = EvaluationResult(
+                scores=[CriterionScore(criterionId="react", criterionLabel="React",
+                                       score=80, evidence=["x"], reason="x")],
+                strengths=["x"], weaknesses=[], recommendations=[], hrEvaluation="iyi",
+            )
+            return [(profile, evaluation) for _ in texts]
+
+    service = BatchAnalysisService(BigCVService(behaviors))
+    _, truncated_files = await service.analyze_batch(_files(names), CRITERIA)
+
+    assert truncated_files, "batch bütçesi kırpması kullanıcıya bildirilmedi"

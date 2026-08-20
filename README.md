@@ -12,9 +12,13 @@ doğrulanır, ortak bir `CandidateProfile` şemasına normalize edilir ve
 yalnızca bu kullanıcı tanımlı kriterlere göre değerlendirilir — **ham PDF
 hiçbir zaman doğrudan skorlanmaz.**
 
-Model tamamen yereldir; hiçbir bulut servisi kullanılmaz. Canlı olarak
-**Ollama** (`qwen2.5:7b`) ve **LM Studio** (`google/gemma-4-e4b`) ile
-doğrulanmıştır; **vLLM** de aynı arayüzle desteklenir.
+Varsayılan yapılandırma **yerel-öncelikli**: kutudan çıktığı hâliyle
+`localhost`'taki Ollama'ya bağlanır, bulut servisi ya da API anahtarı
+gerektirmez. Canlı olarak **Ollama** (`qwen2.5:7b`) ve **LM Studio**
+(`google/gemma-4-e4b`) ile doğrulanmıştır; **vLLM** aynı protokolü
+kullanır (canlı test edilmedi). `LLM_BASE_URL` uzak bir sunucuya da
+yönlendirilebilir — bu durumda CV içeriği o sunucuya gönderilir, bkz.
+[SECURITY.md](SECURITY.md).
 
 ## Demo
 
@@ -59,11 +63,11 @@ Pragmatik katmanlı mimari; LLM sağlayıcıları port/adapter ile soyutlanmış
 Ayrıntı, hata yayılımı ve istek akışı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 > **Not:** "OpenAI-uyumlu" bir **protokol** adıdır, servis adı değil — LM Studio
-> ve vLLM kendi yerel sunucularını bu HTTP biçiminde (`/v1/chat/completions`)
-> sunar. Proje OpenAI servisini **kullanmaz**: `openai` paketi bağımlılıklarda
-> yoktur, tüm istekler `localhost`'a gider, API anahtarı gerekmez. Tek bir
-> adaptör hem LM Studio'yu hem vLLM'i karşıladığı için sınıf adı protokolü
-> yansıtır.
+> ve vLLM kendi sunucularını bu HTTP biçiminde (`/v1/chat/completions`) sunar.
+> Proje OpenAI servisine bağlanmaz; `openai` paketi bağımlılık değildir ve
+> istekler `LLM_BASE_URL`'in gösterdiği sunucuya (varsayılan: `localhost`)
+> gider. Tek adaptörün hem LM Studio'yu hem vLLM'i karşılamasının nedeni
+> ikisinin de bu protokolü paylaşmasıdır.
 
 ## İşlem Hattı
 
@@ -168,7 +172,7 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-89 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+90 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
 canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
 **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 
