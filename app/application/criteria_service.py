@@ -1,9 +1,12 @@
 """Dinamik kriter tanımlama use-case (README.md → Dinamik Kriter Tanımlama ve Tekli CV Analizi)."""
 from __future__ import annotations
 
+import logging
 import re
 
 from app.domain.errors import LLMOutputValidationError, NoCriteriaDefinedError
+
+logger = logging.getLogger(__name__)
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
@@ -54,9 +57,21 @@ class CriteriaService:
     async def define_if_requested(
         self, chat_id: int, free_text: str
     ) -> list[Criterion] | None:
-        result = await self._llm.structured_chat(
-            CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult, model=self._intent_model
-        )
+        try:
+            result = await self._llm.structured_chat(
+                CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult, model=self._intent_model
+            )
+        except LLMOutputValidationError:
+            # Niyet sınıflandırması şemaya uygun JSON üretemedi (iki denemede de) —
+            # canlı testte zayıf bir modelle (0.5B) gerçekleşti, bkz. README.md →
+            # Teknik Altyapı. Kullanıcıyı hata mesajıyla çıkmaza sokmak yerine mesajı
+            # "chat" varsayıp normal sohbete düşürüyoruz: kriter tanımlamak isteyen
+            # kullanıcı ya modelin sonraki denemede doğru sınıflandırmasıyla ya da
+            # açık `/criteria` komutuyla amacına ulaşır — hard-fail yerine soft-fail.
+            logger.warning(
+                "Intent sınıflandırması şema hatası verdi, mesaj chat olarak işleniyor"
+            )
+            return None
         if result.intent == "chat":
             return None
         criteria = self._grounded_criteria(result.criteria, free_text)

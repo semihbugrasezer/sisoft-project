@@ -3,6 +3,7 @@ import pytest
 from app.application.criteria_service import CriteriaService
 from pydantic import ValidationError
 
+from app.domain.errors import LLMOutputValidationError
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
 
@@ -127,6 +128,22 @@ async def test_define_if_requested_defaults_to_main_model_when_unconfigured():
     await service.define_if_requested(1, "bugün nasılsın?")
 
     assert llm.seen_models == [None]  # OllamaClient bunu ana modele düşürür
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_falls_back_to_chat_when_intent_schema_invalid():
+    # Zayıf modellerde (canlı testte 0.5B) intent-classification iki denemede de şemaya
+    # uygun JSON üretemeyebilir. Kullanıcıyı hata mesajıyla çıkmaza sokmak yerine
+    # mesajı chat olarak ele almalıyız (bkz. README.md → Teknik Altyapı).
+    class FailingIntentLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            raise LLMOutputValidationError("Model beklenen formatta yanıt üretemedi.")
+
+    result = await CriteriaService(FailingIntentLLM(), FakeRepo()).define_if_requested(
+        1, "merhaba nasılsın"
+    )
+
+    assert result is None
 
 
 def test_blank_or_duplicate_criteria_are_rejected():
