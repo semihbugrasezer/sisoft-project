@@ -46,10 +46,15 @@ class CVAnalysisService:
         # Blocking PDF işi event loop'u bloklamasın diye thread'e atılır. max_chars
         # parser'a geçiriliyor ki bütçe dolar dolmaz sayfa okumayı durdursun —
         # PDF'i reddetmez, yalnızca gereksiz sayfa taramasını önler.
-        text = await asyncio.to_thread(
+        text, truncated_by_parser = await asyncio.to_thread(
             validate_and_extract_text, pdf_bytes, max_chars=MAX_EXTRACTED_CHARS
         )
-        truncated = len(text) > MAX_EXTRACTED_CHARS
+        # Parser sayfa sınırında durur, tam max_chars'ı garanti etmez (bir sayfa
+        # bütçeyi aşabilir) — bu yüzden karakter bazlı kırpma burada ayrıca
+        # uygulanır. truncated_by_parser, parser'ın kendisinin atladığı sayfa
+        # olup olmadığını (bkz. pymupdf_parser.py) karakter sayımından daha
+        # güvenilir şekilde bilir; ikisi OR'lanır.
+        truncated = truncated_by_parser or len(text) > MAX_EXTRACTED_CHARS
         if truncated:
             logger.warning(
                 "Çıkarılan metin %d karakter, %d'e kırpıldı (context/timeout koruması)",

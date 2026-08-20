@@ -6,8 +6,9 @@ import pymupdf as fitz
 from app.domain.errors import PDFValidationError
 
 
-def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) -> str:
-    """Bozuk/şifreli/boş PDF'i sade Türkçe hata mesajıyla reddeder, geçerliyse metni döner.
+def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) -> tuple[str, bool]:
+    """Bozuk/şifreli/boş PDF'i sade Türkçe hata mesajıyla reddeder, geçerliyse
+    (metin, kırpıldı_mı) döner.
 
     `max_chars` verilirse bütçe dolar dolmaz sayfa okumayı durdurur — bu PDF'i
     REDDETMEZ (kasıtlı olarak sayfa sayısı limiti yok, bkz.
@@ -15,6 +16,12 @@ def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) ->
     zaten LLM'e gidecek metni kırpacaksak önce tüm sayfaları gereksiz yere okumayı
     önler — küçük dosya boyutlu ama çok sayfalı bir PDF'nin CPU'yu boşuna meşgul
     etmesini engeller.
+
+    İkinci dönüş değeri, okunmamış sayfa kaldığı için içerik gerçekten atlandığında
+    True olur. Yalnızca `len(text) > max_chars` karşılaştırmasına güvenmek yanlış
+    olurdu: bütçeyi dolduran sayfa aynı zamanda son sayfaysa `total` tam `max_chars`
+    değerine eşit çıkabilir ve hiçbir şey atlanmamışken de bu karşılaştırma False
+    döner — bkz. test_truncated_is_true_only_when_a_page_is_actually_dropped.
     """
     if not pdf_bytes:
         raise PDFValidationError("Dosya boş görünüyor.")
@@ -33,11 +40,13 @@ def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) ->
 
         chunks: list[str] = []
         total = 0
-        for page in doc.pages():
+        truncated = False
+        for index, page in enumerate(doc.pages()):
             chunk = page.get_text(sort=True)
             chunks.append(chunk)
             total += len(chunk)
             if max_chars is not None and total >= max_chars:
+                truncated = index < doc.page_count - 1
                 break
         text = "\n".join(chunks)
     finally:
@@ -47,4 +56,4 @@ def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) ->
         raise PDFValidationError(
             "PDF açıldı ama okunabilir metin bulunamadı — taranmış (görsel) belge olabilir."
         )
-    return text
+    return text, truncated

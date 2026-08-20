@@ -53,12 +53,13 @@ def _layout_pdf(layout):
 
 @pytest.mark.parametrize("pdf_path", sorted(Path("mock_cvs").glob("*.pdf")))
 def test_mock_cvs_are_readable(pdf_path):
-    assert len(validate_and_extract_text(pdf_path.read_bytes())) >= 100
+    text, _ = validate_and_extract_text(pdf_path.read_bytes())
+    assert len(text) >= 100
 
 
 @pytest.mark.parametrize("layout", ["single", "columns", "multipage", "table"])
 def test_different_pdf_layouts_are_readable(layout):
-    text = validate_and_extract_text(_layout_pdf(layout))
+    text, _ = validate_and_extract_text(_layout_pdf(layout))
     assert "Ada" in text
     assert "React" in text
 
@@ -84,7 +85,8 @@ def test_readable_pdf_is_not_rejected_by_unspecified_page_or_text_limits():
     payload = doc.tobytes()
     doc.close()
 
-    assert validate_and_extract_text(payload).strip()
+    text, _ = validate_and_extract_text(payload)
+    assert text.strip()
 
 
 def test_max_chars_stops_reading_early_without_rejecting_pdf():
@@ -96,11 +98,39 @@ def test_max_chars_stops_reading_early_without_rejecting_pdf():
     payload = doc.tobytes()
     doc.close()
 
-    text = validate_and_extract_text(payload, max_chars=150)
+    text, truncated = validate_and_extract_text(payload, max_chars=150)
 
     assert text.strip()
     # ilk 1-2 sayfadan sonra durmalı, 20 sayfanın tamamını okumamalı
     assert len(text) < 100 * 20
+    assert truncated is True
+
+
+def test_truncated_is_true_only_when_a_page_is_actually_dropped():
+    # Sınır durumu: bütçeyi dolduran sayfa aynı zamanda SON sayfaysa hiçbir şey
+    # atlanmamıştır — `len(text) >= max_chars` karşılaştırması tek başına bunu
+    # ayırt edemez (total tam max_chars'a eşit çıkabilir). Parser bunu sayfa
+    # sayısına bakarak doğru ayırt etmeli.
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 70), "A" * 50)  # tek sayfa, tam bütçe kadar
+    payload = doc.tobytes()
+    doc.close()
+
+    text, truncated = validate_and_extract_text(payload, max_chars=50)
+
+    assert len(text) == 50
+    assert truncated is False  # atlanan sayfa yok
+
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 70), "A" * 50)  # bütçeyi dolduran sayfa...
+    doc.new_page().insert_text((50, 70), "B" * 50)  # ...ama arkasında sayfa var
+    payload = doc.tobytes()
+    doc.close()
+
+    text, truncated = validate_and_extract_text(payload, max_chars=50)
+
+    assert len(text) == 50
+    assert truncated is True  # ikinci sayfa gerçekten atlandı
 
 
 @pytest.mark.parametrize(
