@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from app.application.cv_analysis_service import CVAnalysisService
 from app.domain.errors import AppError, PDFValidationError
@@ -84,4 +85,12 @@ class BatchAnalysisService:
                 f"Şu dosyalar geçersiz olduğu için toplu analiz başlatılmadı: {bad_names}. "
                 "Sorunlu dosyaları çıkarıp tekrar gönderin."
             )
-        return [(name, text, truncated) for (name, _), (text, truncated) in zip(files, outcomes, strict=True)]
+        # Yukarıdaki döngü her BaseException'ı ya `errors`'a topladı (sonra fonksiyon
+        # PDFValidationError ile döndü) ya da yeniden fırlattı — bu satıra ulaşıldığında
+        # outcomes içinde artık yalnızca (text, truncated) tuple'ları vardır. mypy bunu
+        # akış analiziyle çıkaramıyor (bkz. cast).
+        successful = cast(list[tuple[str, bool]], outcomes)
+        return [
+            (name, text, truncated)
+            for (name, _), (text, truncated) in zip(files, successful, strict=True)
+        ]

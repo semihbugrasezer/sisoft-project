@@ -41,13 +41,19 @@ main.py                      Entrypoint: config → container → polling
 ## Neden Bu Ayrım
 
 `domain` hiçbir dış bağımlılık bilmez — `scoring.py` test edilirken ne LLM'e
-ne Telegram'a ihtiyaç var. `application` yalnızca `domain` ve arayüzlere
-(`LLMPort`, repo) bağımlıdır, somut `OllamaClient`'ı değil — bu yüzden
-testlerde taklit (fake) LLM/repo nesneleriyle izole test edilebilir.
-`infrastructure` bu arayüzleri gerçek kütüphanelerle (httpx, PyMuPDF, sqlite3)
-uygular. `presentation/telegram` yalnızca Telegram'a özgü I/O'yu bilir; iş
-mantığı burada asla yoktur — bir handler her zaman bir application servisini
-çağırır ve sonucu formatlar.
+ne Telegram'a ihtiyaç var. LLM erişimi tam soyutlanmıştır: `application`
+yalnızca `LLMPort` arayüzüne bağımlıdır, somut `OllamaClient`'a değil —
+`infrastructure` bu arayüzü gerçek kütüphanelerle (httpx) uygular, testlerde
+taklit (fake) bir LLM nesnesiyle değiştirilir. `SQLiteRepo` ve PDF parser'ın
+ayrı bir arayüzü yoktur; `application` bunları doğrudan kullanır — Python'da
+duck typing sayesinde testler yine de sahte (fake) nesnelerle izole çalışır
+(bkz. `tests/test_criteria_service.py` içindeki `FakeRepo`), ayrı bir soyut
+sınıf tanımlamaya gerek kalmadan. Tek implementasyon olan bir bağımlılık için
+resmi bir arayüz eklemek bu projenin ölçeğinde karşılıksız bir soyutlama
+olurdu (bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md)).
+`presentation/telegram` yalnızca Telegram'a özgü I/O'yu bilir; iş mantığı
+burada asla yoktur — bir handler her zaman bir application servisini çağırır
+ve sonucu formatlar.
 
 ## İstek Akışı (Tekli CV Analizi)
 
@@ -80,7 +86,7 @@ iki LLM çağrısı".
 - Telegram tarafı: `Application.concurrent_updates(8)` — birden fazla sohbet
   eşzamanlı işlenebilir; `handlers.py` her `chat_id` için ayrı bir
   `asyncio.Lock` kullanır (aynı sohbette sıralı, farklı sohbetlerde paralel).
-- LLM tarafı: `OLLAMA_MAX_CONCURRENCY` (varsayılan 3) tek yerel model
+- LLM tarafı: `LLM_MAX_CONCURRENCY` (varsayılan 3) tek yerel model
   sunucusuna aynı anda giden istek sayısını sınırlayan bir semafordur —
   Telegram'ın 8 eşzamanlı update kabul etmesinden bağımsızdır.
 - PDF tarafı: bloklayan `PyMuPDF` çağrıları `asyncio.to_thread` ile event

@@ -56,6 +56,38 @@ def test_keeps_short_or_symbolic_exact_criterion():
     assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
 
 
+class FakeLLMParaphraseThenExact:
+    """İlk çağrıda kullanıcının kelimesini parafraz eder (grounded ama birebir değil),
+    düzeltme turunda birebir kopyalar."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        label = "React deneyimi" if self.calls == 1 else "React tecrübesi"
+        return CriteriaExtractionResult(
+            criteria=[Criterion(id="react", label=label, description="x")]
+        )
+
+
+@pytest.mark.asyncio
+async def test_paraphrased_but_grounded_label_triggers_verbatim_retry():
+    # Ödev PDF'indeki örnek JSON kullanıcının kendi ifadesinin birebir yansımasını
+    # bekliyor ("React tecrübesi" girilirse çıktıda da "React tecrübesi" olmalı).
+    # İlk çağrı "React deneyimi" gibi anlamca doğru ama birebir olmayan bir label
+    # üretirse (kelime-örtüşmesiyle zaten "grounded" sayılır) yine de bir düzeltme
+    # turu tetiklenmeli.
+    llm = FakeLLMParaphraseThenExact()
+    repo = FakeRepo()
+    criteria = await CriteriaService(llm, repo).define_criteria(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert llm.calls == 2
+    assert criteria[0].label == "React tecrübesi"
+
+
 def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
     result = CriteriaExtractionResult(
         criteria=[

@@ -33,7 +33,7 @@ def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) ->
 
         chunks: list[str] = []
         total = 0
-        for page in doc:
+        for page in doc.pages():
             chunk = page.get_text(sort=True)
             chunks.append(chunk)
             total += len(chunk)

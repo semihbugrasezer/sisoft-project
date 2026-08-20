@@ -166,7 +166,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def criteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    free_text = " ".join(context.args)
+    free_text = " ".join(context.args or [])
     if not free_text.strip():
         await update.message.reply_text(
             "Kullanım: /criteria React tecrübesi, temiz kod, uzaktan çalışma"

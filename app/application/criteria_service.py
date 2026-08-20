@@ -41,15 +41,23 @@ class CriteriaService:
             CRITERIA_EXTRACTOR_SYSTEM, free_text, CriteriaExtractionResult
         )
         criteria = self._grounded_criteria(result.criteria, free_text)
-        if not criteria:
-            result = await self._llm.structured_chat(
+        if not criteria or not self._all_labels_exact(criteria, free_text):
+            # En az bir label kullanıcı metninden birebir değilse (LLM parafraz etmiş
+            # olabilir, örn. "React tecrübesi" -> "React deneyimi") bir kez daha,
+            # daha açık bir talimatla denenir. Ödev PDF'indeki örnek JSON, kullanıcının
+            # kendi ifadesinin birebir yansıtılmasını bekliyor.
+            retry_result = await self._llm.structured_chat(
                 CRITERIA_EXTRACTOR_SYSTEM,
                 free_text
                 + "\n\nDÜZELTME: Her label kullanıcı metninden birebir kopyalanmış "
                 "kesintisiz bir ifade olmalı; metinde olmayan kriterleri çıkar.",
                 CriteriaExtractionResult,
             )
-            criteria = self._grounded_criteria(result.criteria, free_text)
+            retried = self._grounded_criteria(retry_result.criteria, free_text)
+            # Retry tamamen boşsa ilk (parafrazlı ama en azından anahtar kelime bazlı
+            # grounded) sonuca düşülür — model'i tamamen reddetmek yerine.
+            if retried:
+                criteria = retried
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
         return await self._save(chat_id, criteria)
@@ -84,6 +92,26 @@ class CriteriaService:
         return criteria
 
     @staticmethod
+    def _is_exact_label_match(label: str, normalized_source: str) -> bool:
+        normalized_label = label.casefold().strip()
+        return bool(
+            re.search(rf"(?<!\w){re.escape(normalized_label)}(?!\w)", normalized_source)
+        )
+
+    @staticmethod
+    def _all_labels_exact(criteria: list[Criterion], source: str) -> bool:
+        """Ödev PDF'indeki örnek JSON, `userDefinedCriteria`/`dynamicScores` alanlarında
+        kullanıcının kendi ifadesinin birebir yansımasını bekliyor. Bu, `define_criteria`
+        içinde bir düzeltme turu tetiklemek için kullanılır — parafraz edilmiş bir label
+        (örn. "React tecrübesi" -> "React deneyimi") grounded sayılsa bile burada False
+        döner."""
+        normalized_source = source.casefold()
+        return all(
+            CriteriaService._is_exact_label_match(criterion.label, normalized_source)
+            for criterion in criteria
+        )
+
+    @staticmethod
     def _grounded_criteria(criteria: list[Criterion], source: str) -> list[Criterion]:
         generic_words = {
             "beceri", "becerisi", "bilgi", "bilgisi", "deneyim", "deneyimi",
@@ -93,11 +121,9 @@ class CriteriaService:
         source_words = set(re.findall(r"\w+", normalized_source))
 
         def is_grounded(criterion: Criterion) -> bool:
-            normalized_label = criterion.label.casefold().strip()
-            exact_match = re.search(
-                rf"(?<!\w){re.escape(normalized_label)}(?!\w)", normalized_source
-            )
-            return bool(exact_match) or any(
+            return CriteriaService._is_exact_label_match(
+                criterion.label, normalized_source
+            ) or any(
                 word in source_words
                 for word in re.findall(r"\w+", criterion.label.casefold())
                 if len(word) >= 3 and word not in generic_words
