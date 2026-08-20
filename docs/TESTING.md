@@ -21,11 +21,12 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **119 test**, 17 dosyada. (Test sayısının tek kaynağı bu
+Toplam **127 test**, 18 dosyada. (Test sayısının tek kaynağı bu
 dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
+| `test_cv_layouts.py` | 7 | Beş farklı PDF layout'unun (tek kolon, iki kolon, tablo, farklı bölüm sırası, çok sayfalı) okunabildiği ve içeriğinin korunduğu |
 | `test_pdf_parser.py` | 16 | 6 doğrulama senaryosu (boş/imza/bozuk/şifreli/sayfasız/metinsiz), farklı layout'lar (tek sütun, iki sütun, çok sayfa, tablo), kırpma sınırı ve tam-sınır durumu |
 | `test_criteria_service.py` | 13 | Serbest metinden kriter çıkarımı, grounding, grounding düzeltme turu (hem `/criteria` hem doğal dil akışında), intent modeli override'ı, niyet belirlenemezse açık hata |
 | `test_models.py` | 12 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
@@ -36,7 +37,7 @@ dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 | `test_chat_service.py` | 5 | Sıcak pencere + rolling summary, özetleme hatasında veri kaybı olmaması |
 | `test_config.py` | 5 | Backend seçimi, geçersiz değer reddi, zorunlu token |
 | `test_scoring.py` | 5 | Ortalama hesaplama, top-3 sıralama, eşitlik durumu |
-| `test_handlers.py` | 5 | Telegram akışı, Markdown fallback, kırpma uyarısı, büyük JSON'un dosya olarak gönderilmesi, sohbet sırası/kilit davranışı |
+| `test_handlers.py` | 6 | Telegram akışı, Markdown fallback, kırpma uyarısı, büyük JSON'un dosya olarak gönderilmesi, sohbet sırası/kilit davranışı |
 | `test_media_group_collector.py` | 6 | Albüm toplama, debounce, limit, kapatılmış gruba geç gelen dosya |
 | `test_formatter.py` | 3 | Markdown rapor, JSON çıktı biçimi |
 | `test_ollama_client.py` | 2 | `/api/chat` sözleşmesi, şema retry'ı |
@@ -74,6 +75,8 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 | `test_intent_failure_retries_with_main_model` / `test_intent_failure_on_both_models_raises_explicit_error` | Küçük intent modeli JSON üretemeyince kullanıcının kriter tanımı sessizce sohbete düşüyordu; artık ana modelle tekrar denenir, o da başarısızsa `IntentUndecidableError` |
 | `test_natural_language_path_shares_grounding_correction` | Grounding düzeltmesi yalnız `/criteria` yolunda çalışıyordu; komutsuz (asıl) akış uydurma kriteri doğrudan kaydedebiliyordu |
 | `test_semantically_grounded_paraphrase_is_accepted` | PDF'de olmayan bir birebir-etiket kısıtı eklenmişti; parafrazı reddedip gereksiz düzeltme turu tetikliyordu |
+| `test_bot_still_answers_chat_while_batch_is_running` | Ödevin "batch sırasında bot yanıt vermeli" şartı: kilitler birleştirilirse bu test timeout'a düşer |
+| `test_every_layout_is_readable_and_keeps_key_content` | Beş mock CV aynı şablonla üretiliyordu; "farklı format" şartı hiç test edilmiyordu |
 | `test_qualitative_report_sections_cannot_be_empty` | Kabul testi gerçek modelde yakaladı: rapor bölümleri boş gelebiliyor, kullanıcı "(belirtilmedi)" görüyordu |
 | `test_label_matching` | Kabul testi eşleştiricisi fazla toleranslıydı: "React" etiketi "React tecrübesi" beklentisini PASS ediyordu |
 | `test_same_chat_messages_are_processed_in_arrival_order` | Niyet sınıflandırması kilit dışındaydı; aynı sohbetten hızlı gelen iki mesaj sohbet geçmişine ters sırada yazılabiliyordu |
@@ -87,7 +90,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  119 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  127 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 

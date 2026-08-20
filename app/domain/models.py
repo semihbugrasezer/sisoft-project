@@ -244,3 +244,17 @@ class MultiAnalysisResponse(BaseModel):
         if actual != expected:
             raise ValueError(f"rank değerleri 1..N sırasıyla olmalı, alınan: {actual}")
         return self
+
+    @model_validator(mode="after")
+    def candidate_count_matches_processed(self):
+        """Aday sayısı işlenen CV sayısıyla tutarlı olmalı: 3+ CV işlendiyse tam 3
+        aday, daha azsa işlenen kadar. Yalnız `max_length=3` demek yetmez — 5 CV
+        işlenip 2 aday dönmesi şemadan geçerdi ama ödevin top-3 sözleşmesini
+        sessizce bozardı."""
+        expected = min(3, self.processedCVCount)
+        if len(self.topCandidates) != expected:
+            raise ValueError(
+                f"processedCVCount={self.processedCVCount} için {expected} aday "
+                f"beklenirdi, {len(self.topCandidates)} geldi"
+            )
+        return self
