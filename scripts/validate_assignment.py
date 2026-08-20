@@ -40,10 +40,11 @@ ASSIGNMENT_CRITERIA_MESSAGE = (
     "uzaktan çalışma uyumuna göre skorla"
 )
 
-# Yukarıdaki cümlede geçen üç kriter. Etiketler kullanıcı metninden birebir
-# alındığı için son kelime cümledeki çekimli hâliyle gelebilir
-# ("uzaktan çalışma uyumu" / "...uyumuna") — eşleşme bunu tolere eder, ama
-# kelime SAYISI ve diğer kelimeler birebir eşleşmek zorundadır (bkz. _matches).
+# Yukarıdaki cümlede geçen üç kriter. Ödev etiketin kelimesi kelimesine aynı
+# olmasını istemiyor (PDF'in kendi JSON örneği "Clean Code" gösteriyor), ama bu
+# KABUL TESTİ üç kriterin de yakalandığını kanıtlamalı — dolayısıyla eşleşme
+# ayırt edici olmalı: kelime sayısı eşit, son kelimede çekim toleransı
+# (bkz. _label_matches). "React" tek başına "React tecrübesi"ni geçemez.
 EXPECTED_CRITERIA = [
     "React tecrübesi",
     "temiz kod yazımı",
@@ -62,8 +63,8 @@ def _label_matches(expected: str, actual: str) -> bool:
 
     Neden düz `startswith` değil: "React" tek başına "React tecrübesi"nin öneki
     olduğu için eksik bir etiketi PASS ettirirdi. Kelime sayısı eşitliği bunu
-    engeller. Neden tam eşitlik de değil: birebir-etiket zorunluluğu nedeniyle
-    etiket, kullanıcının cümlesindeki çekimi devralır ("uyumuna").
+    engeller. Neden tam eşitlik de değil: etiket kullanıcının cümlesindeki çekimi
+    devralabilir ("uyumu" / "uyumuna") ve bu kabul edilebilir bir farktır.
     """
     expected_words = _norm(expected).split()
     actual_words = _norm(actual).split()

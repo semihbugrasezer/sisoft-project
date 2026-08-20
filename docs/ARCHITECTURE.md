@@ -45,6 +45,7 @@ app/
 │   ├── models.py           Pydantic şemaları (LLM çıktıları buraya zorlanır)
 │   ├── errors.py           AppError hiyerarşisi (PDFValidationError, LLMOutputValidationError, ...)
 │   ├── ports.py            LLMPort arayüzü (infrastructure bunu uygular)
+│   ├── grounding.py        Kaynak-doğrulama (candidateName kaynak metinde var mı)
 │   └── scoring.py          Ortalama hesaplama, top-3 sıralama — LLM'e bağımlı değil
 │
 ├── application/            Use-case servisleri, domain + infrastructure'ı birleştirir

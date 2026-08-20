@@ -45,23 +45,17 @@ class CriteriaService:
             CRITERIA_EXTRACTOR_SYSTEM, free_text, CriteriaExtractionResult
         )
         criteria = self._grounded_criteria(result.criteria, free_text)
-        if not criteria or not self._all_labels_exact(criteria, free_text):
-            # En az bir label kullanıcı metninden birebir değilse (LLM parafraz etmiş
-            # olabilir, örn. "React tecrübesi" -> "React deneyimi") bir kez daha,
-            # daha açık bir talimatla denenir. Ödev PDF'indeki örnek JSON, kullanıcının
-            # kendi ifadesinin birebir yansıtılmasını bekliyor.
+        if not criteria:
+            # Hiçbir kriter kullanıcının metnine dayanmıyor (model uydurmuş) —
+            # bir kez daha, daha açık bir talimatla denenir.
             retry_result = await self._llm.structured_chat(
                 CRITERIA_EXTRACTOR_SYSTEM,
                 free_text
-                + "\n\nDÜZELTME: Her label kullanıcı metninden birebir kopyalanmış "
-                "kesintisiz bir ifade olmalı; metinde olmayan kriterleri çıkar.",
+                + "\n\nDÜZELTME: Yalnızca kullanıcı metninde gerçekten geçen "
+                "kriterleri çıkar; metinde olmayan kriter uydurma.",
                 CriteriaExtractionResult,
             )
-            retried = self._grounded_criteria(retry_result.criteria, free_text)
-            # Retry tamamen boşsa ilk (parafrazlı ama en azından anahtar kelime bazlı
-            # grounded) sonuca düşülür — model'i tamamen reddetmek yerine.
-            if retried:
-                criteria = retried
+            criteria = self._grounded_criteria(retry_result.criteria, free_text)
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
         return await self._save(chat_id, criteria)
@@ -106,13 +100,10 @@ class CriteriaService:
         if result.intent == "chat":
             return None
         criteria = self._grounded_criteria(result.criteria, free_text)
-        # Doğal dil akışı ile `/criteria` akışı AYNI doğrulamadan geçmeli. Intent
-        # çağrısı grounded ama parafraz edilmiş etiketler döndürebilir ("React
-        # tecrübesi" -> "React deneyimi"); bu durumda da `define_criteria`'ya
-        # devredilir çünkü birebir-kopya düzeltme turu orada. Aksi halde ödevin
-        # örnek JSON'undaki birebir eşleşme yalnız komut yolunda korunur, komutsuz
-        # (asıl) yolda korunmazdı.
-        if not criteria or not self._all_labels_exact(criteria, free_text):
+        # Doğal dil akışı ile `/criteria` akışı AYNI doğrulamadan geçmeli: hiçbir
+        # kriter kullanıcının metnine dayanmıyorsa düzeltme turu `define_criteria`
+        # içindedir, oraya devredilir.
+        if not criteria:
             return await self.define_criteria(chat_id, free_text)
         return await self._save(chat_id, criteria)
 
@@ -125,19 +116,6 @@ class CriteriaService:
         normalized_label = label.casefold().strip()
         return bool(
             re.search(rf"(?<!\w){re.escape(normalized_label)}(?!\w)", normalized_source)
-        )
-
-    @staticmethod
-    def _all_labels_exact(criteria: list[Criterion], source: str) -> bool:
-        """Ödev PDF'indeki örnek JSON, `userDefinedCriteria`/`dynamicScores` alanlarında
-        kullanıcının kendi ifadesinin birebir yansımasını bekliyor. Bu, `define_criteria`
-        içinde bir düzeltme turu tetiklemek için kullanılır — parafraz edilmiş bir label
-        (örn. "React tecrübesi" -> "React deneyimi") grounded sayılsa bile burada False
-        döner."""
-        normalized_source = source.casefold()
-        return all(
-            CriteriaService._is_exact_label_match(criterion.label, normalized_source)
-            for criterion in criteria
         )
 
     @staticmethod
