@@ -5,6 +5,7 @@ import asyncio
 import logging
 
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from app.domain.errors import AppError
@@ -30,16 +31,16 @@ START_MESSAGE = (
     "*Kriter tanımlama*\n"
     "Komut gerekmez, doğrudan yaz:\n"
     "\"CV'leri React tecrübesi, temiz kod ve uzaktan çalışma uyumuna göre değerlendir\"\n"
-    "(İstersen /criteria <serbest metin> ile de tanımlayabilirsin.)\n\n"
+    "(İstersen `/criteria <serbest metin>` ile de tanımlayabilirsin.)\n\n"
     "*CV analizi*\n"
     "Kriter tanımlıyken PDF gönder:\n"
     "• Tek PDF → detaylı Markdown analiz raporu\n"
     "• Albüm olarak 2-5 PDF → otomatik top-3 JSON\n"
-    "• Tek tek göndermek istersen: /batch → PDF'ler → /analyze\n\n"
+    "• Tek tek göndermek istersen: `/batch` → PDF'ler → `/analyze`\n\n"
     "*Diğer komutlar*\n"
-    "/criteria_show — aktif kriterleri gösterir\n"
-    "/cancel — bekleyen CV kuyruğunu temizler\n"
-    "/reset — sohbet geçmişini ve kriterleri sıfırlar"
+    "`/criteria_show` — aktif kriterleri gösterir\n"
+    "`/cancel` — bekleyen CV kuyruğunu temizler\n"
+    "`/reset` — sohbet geçmişini ve kriterleri sıfırlar"
 )
 
 
@@ -61,6 +62,18 @@ def _media_group_manager(context: ContextTypes.DEFAULT_TYPE) -> MediaGroupManage
 
 def _batch_mode_chats(context: ContextTypes.DEFAULT_TYPE) -> set[int]:
     return context.application.bot_data.setdefault("batch_mode_chats", set())
+
+
+async def _send_markdown_or_plain(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
+    """CV analiz raporu LLM tarafından üretilir; dengesiz `*`/`_` (ör. eşleşmeyen alt
+    çizgi) Telegram'ın legacy Markdown ayrıştırıcısını kırıp BadRequest fırlatabilir.
+    Böyle bir durumda kullanıcıyı hatayla baş başa bırakmak yerine biçimlendirmesiz
+    düz metne düşerek raporu yine de teslim ediyoruz."""
+    try:
+        await context.bot.send_message(chat_id, text, parse_mode="Markdown")
+    except BadRequest:
+        logger.warning("Markdown ayrıştırma hatası, düz metne düşülüyor")
+        await context.bot.send_message(chat_id, text)
 
 
 async def _reply_criteria_saved(update: Update, criteria: list[Criterion]) -> None:
@@ -92,7 +105,7 @@ async def _process_files(
                 return
             report = format_single_analysis(profile, evaluation)
             for chunk in chunk_message(report):
-                await context.bot.send_message(chat_id, chunk, parse_mode="Markdown")
+                await _send_markdown_or_plain(context, chat_id, chunk)
             return
 
         try:
@@ -132,7 +145,7 @@ async def _debounce_and_trigger(
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(START_MESSAGE, parse_mode="Markdown")
+    await _send_markdown_or_plain(context, update.effective_chat.id, START_MESSAGE)
 
 
 async def criteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
