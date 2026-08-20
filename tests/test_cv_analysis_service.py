@@ -42,9 +42,9 @@ class FakeLLM:
                     reason="kanıt",
                 )
             ],
-            strengths=[],
-            weaknesses=[],
-            recommendations=[],
+            strengths=["güçlü yön"],
+            weaknesses=["zayıf yön"],
+            recommendations=["tavsiye"],
             hrEvaluation="uygun",
         )
 
@@ -75,9 +75,9 @@ def _evaluation(criterion_id="react"):
                 reason="kanıt",
             )
         ],
-        strengths=[],
-        weaknesses=[],
-        recommendations=[],
+        strengths=["güçlü yön"],
+        weaknesses=["zayıf yön"],
+        recommendations=["tavsiye"],
         hrEvaluation="uygun",
     )
 

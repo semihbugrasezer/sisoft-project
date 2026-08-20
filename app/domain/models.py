@@ -159,12 +159,21 @@ class CriterionScore(BaseModel):
 
 
 class EvaluationResult(BaseModel):
+    """Tekli CV raporu. Ödev PDF §2 raporda güçlü yönler, zayıf yönler VE gelişim
+    tavsiyelerinin kullanıcıya sunulmasını istiyor — üçü de opsiyonel değildir.
+
+    `min_length=1`: boş liste şemaya uysaydı rapor "Zayıf Yönler: (belirtilmedi)"
+    ile çıkardı; kabul testi bunu gerçek bir modelde yakaladı. Prompt, gerçek bir
+    zayıf yön yoksa UYDURMAK yerine "tespit edilmedi" yazmasını söyler — bölüm
+    dolu kalır ama içerik dürüst olur. Boş liste gelirse ValidationError,
+    structured_chat'in mevcut tek-seferlik düzeltme retry'ını tetikler."""
+
     model_config = ConfigDict(extra="forbid")
 
     scores: list[CriterionScore]
-    strengths: list[str]
-    weaknesses: list[str]
-    recommendations: list[str]
+    strengths: list[str] = Field(min_length=1)
+    weaknesses: list[str] = Field(min_length=1)
+    recommendations: list[str] = Field(min_length=1)
     hrEvaluation: str = Field(description="tek cümlelik özet değerlendirme")
 
 

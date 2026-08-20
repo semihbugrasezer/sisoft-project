@@ -52,8 +52,8 @@ class FakeCVService:
                         )
                     ],
                     strengths=["x"],
-                    weaknesses=[],
-                    recommendations=[],
+                    weaknesses=["zayıf yön"],
+                    recommendations=["tavsiye"],
                     hrEvaluation="iyi",
                 ),
             )
@@ -151,7 +151,7 @@ async def test_batch_level_truncation_is_reported_to_user():
             evaluation = EvaluationResult(
                 scores=[CriterionScore(criterionId="react", criterionLabel="React",
                                        score=80, evidence=["x"], reason="x")],
-                strengths=["x"], weaknesses=[], recommendations=[], hrEvaluation="iyi",
+                strengths=["x"], weaknesses=["zayıf yön"], recommendations=["tavsiye"], hrEvaluation="iyi",
             )
             return [(profile, evaluation) for _ in texts]
 
