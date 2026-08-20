@@ -51,6 +51,15 @@ EXPECTED_CRITERIA = [
     "uzaktan çalışma uyumu",
 ]
 
+# PDF etiketlerin kelimesi kelimesine korunmasını istemiyor; kendi örneğinde
+# "temiz kod yazımı" için "Clean Code" kullanıyor. Kabul ölçeri eksik "React"
+# gibi etiketleri reddetmeye devam ederken bu açık anlamsal eşdeğerleri tanır.
+CRITERIA_ALIASES = {
+    "React tecrübesi": ["React deneyimi"],
+    "temiz kod yazımı": ["temiz kod", "Clean Code"],
+    "uzaktan çalışma uyumu": ["uzaktan çalışma uyumlu"],
+}
+
 ACCEPTANCE_CHAT_ID = -999_001  # gerçek sohbetlerle karışmasın
 
 
@@ -78,7 +87,12 @@ def _label_matches(expected: str, actual: str) -> bool:
 
 
 def _matches(expected: str, actual_labels: list[str]) -> bool:
-    return any(_label_matches(expected, actual) for actual in actual_labels)
+    accepted = [expected, *CRITERIA_ALIASES.get(expected, [])]
+    return any(
+        _label_matches(alias, actual)
+        for alias in accepted
+        for actual in actual_labels
+    )
 
 
 class Report:

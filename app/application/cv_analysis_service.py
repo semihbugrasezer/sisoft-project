@@ -13,7 +13,7 @@ import logging
 import time
 
 from app.domain.errors import LLMOutputValidationError
-from app.domain.grounding import is_grounded_in_source
+from app.domain.grounding import has_grounded_term_in_source, is_grounded_in_source
 from app.domain.models import (
     BatchCandidateEvaluation,
     BatchEvaluationResult,
@@ -94,7 +94,7 @@ class CVAnalysisService:
             CANDIDATE_EVALUATOR_SYSTEM, user_prompt, EvaluationResult
         )
 
-        return profile, self._normalize_evaluation(evaluation, criteria)
+        return profile, self._normalize_evaluation(evaluation, criteria, profile)
 
     async def _ground_candidate_name(
         self, profile: CandidateProfile, source_text: str
@@ -237,7 +237,9 @@ class CVAnalysisService:
                 evaluations_by_id[document_id].evaluation.model_copy(
                     update={
                         "scores": self._normalize_scores(
-                            evaluations_by_id[document_id].evaluation.scores, criteria
+                            evaluations_by_id[document_id].evaluation.scores,
+                            criteria,
+                            profiles_by_id[document_id].profile,
                         )
                     }
                 ),
@@ -255,18 +257,38 @@ class CVAnalysisService:
 
     @staticmethod
     def _normalize_evaluation(
-        evaluation: EvaluationResult, criteria: list[Criterion]
+        evaluation: EvaluationResult,
+        criteria: list[Criterion],
+        profile: CandidateProfile,
     ) -> EvaluationResult:
         return evaluation.model_copy(
-            update={"scores": CVAnalysisService._normalize_scores(evaluation.scores, criteria)}
+            update={
+                "scores": CVAnalysisService._normalize_scores(
+                    evaluation.scores, criteria, profile
+                )
+            }
         )
 
     @staticmethod
-    def _normalize_scores(scores, criteria: list[Criterion]):
+    def _normalize_scores(
+        scores,
+        criteria: list[Criterion],
+        profile: CandidateProfile,
+    ):
         scores_by_id = {score.criterionId: score for score in scores}
         expected_ids = {criterion.id for criterion in criteria}
         if len(scores_by_id) != len(scores) or set(scores_by_id) != expected_ids:
             raise LLMOutputValidationError("Model kriterlerin her biri için tek bir skor üretmedi.")
+
+        profile_content = CVAnalysisService._profile_content(profile)
+        for score in scores:
+            if score.score >= 20 and not any(
+                has_grounded_term_in_source(evidence, profile_content)
+                for evidence in score.evidence
+            ):
+                raise LLMOutputValidationError(
+                    f"{score.criterionId} kriterinin yüksek skoru profile dayanmıyor."
+                )
 
         return [
             scores_by_id[criterion.id].model_copy(
@@ -274,6 +296,23 @@ class CVAnalysisService:
             )
             for criterion in criteria
         ]
+
+    @staticmethod
+    def _profile_content(profile: CandidateProfile) -> str:
+        values: list[str] = []
+
+        def collect(value) -> None:
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    collect(item)
+            elif isinstance(value, list):
+                for item in value:
+                    collect(item)
+
+        collect(profile.model_dump(mode="json"))
+        return "\n".join(values)
 
     async def analyze(
         self, pdf_bytes: bytes, criteria: list[Criterion]

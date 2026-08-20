@@ -27,7 +27,7 @@ class FakeLLM:
                 candidateName="Ada",
                 contact={},
                 summary=None,
-                skills=[],
+                skills=["React"],
                 workExperiences=[],
                 education=[],
                 languages=[],
@@ -38,7 +38,7 @@ class FakeLLM:
                     criterionId=self.criterion_id,
                     criterionLabel="modelin değiştirdiği etiket",
                     score=80,
-                    evidence=["kanıt"],
+                    evidence=["React"],
                     reason="kanıt",
                 )
             ],
@@ -128,6 +128,65 @@ async def test_evaluation_rejects_missing_or_invented_criterion():
 
 
 @pytest.mark.asyncio
+async def test_high_score_evidence_must_exist_in_normalized_profile():
+    class UngroundedEvidenceLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                return _profile()
+            return EvaluationResult(
+                scores=[
+                    CriterionScore(
+                        criterionId="react",
+                        criterionLabel="React tecrübesi",
+                        score=95,
+                        evidence=["Kubernetes ile 10 yıl deneyim"],
+                        reason="uydurulmuş kanıt",
+                    )
+                ],
+                strengths=["x"],
+                weaknesses=["x"],
+                recommendations=["x"],
+                hrEvaluation="x",
+            )
+
+    with pytest.raises(LLMOutputValidationError):
+        await CVAnalysisService(UngroundedEvidenceLLM()).analyze_from_text(
+            "Ada\nReact",
+            CRITERIA,
+        )
+
+
+@pytest.mark.asyncio
+async def test_high_score_evidence_may_explain_a_fact_that_exists_in_profile():
+    class GroundedParaphraseLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                return _profile()
+            return EvaluationResult(
+                scores=[
+                    CriterionScore(
+                        criterionId="react",
+                        criterionLabel="React tecrübesi",
+                        score=80,
+                        evidence=["Aday React alanında deneyimlidir"],
+                        reason="React profile içinde yer alıyor",
+                    )
+                ],
+                strengths=["x"],
+                weaknesses=["x"],
+                recommendations=["x"],
+                hrEvaluation="x",
+            )
+
+    _, evaluation = await CVAnalysisService(GroundedParaphraseLLM()).analyze_from_text(
+        "Ada\nReact",
+        CRITERIA,
+    )
+
+    assert evaluation.scores[0].score == 80
+
+
+@pytest.mark.asyncio
 async def test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles():
     llm = FakeBatchLLM()
 
@@ -184,7 +243,7 @@ class FakeCorruptingLLM:
             correct = self.extraction_calls > 1 and self.fix_on_retry
             return CandidateProfile(
                 candidateName="Semih Buğra Sezer" if correct else "Semhi Bügüra Sezer",
-                contact={}, summary=None, skills=[], workExperiences=[],
+                contact={}, summary=None, skills=["React"], workExperiences=[],
                 education=[], languages=[],
             )
         return _evaluation()

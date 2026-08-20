@@ -83,14 +83,16 @@ model_validate_json()
 ## Şemanın Ötesinde: Semantik Doğrulama
 
 Pydantic `score: int` olduğunu doğrular ama `score` değerinin *doğru* olduğunu
-doğrulayamaz. Bu boşluk için `CriterionScore` üzerinde ek bir validator var:
+doğrulayamaz. Bu boşluk iki ardışık kontrolle kapatılır:
 
-> `score >= 20` ise `evidence` listesi en az bir **gerçek** kanıt içermeli.
-> Yalnızca "Kanıt yok" türü placeholder varsa `ValidationError` fırlar.
+1. `CriterionScore`: `score >= 20` iken yalnızca "Kanıt yok" türü placeholder
+   varsa `ValidationError` fırlatır.
+2. `CVAnalysisService`: yüksek skordaki en az bir evidence maddesinin normalize
+   `CandidateProfile` içindeki somut bir içerik terimine dayandığını doğrular;
+   tamamen profile-dışı cümleyi reddederken doğal dil açıklamalarını kabul eder.
 
-Bu, modelin kanıt göstermeden yüksek puan vermesini (yaygın bir hallüsinasyon
-biçimi) şema seviyesinde engeller. Fırlayan `ValidationError` yukarıdaki retry
-mekanizmasını tetikler — ayrı bir mekanizma gerekmez.
+İlk kontrol Pydantic retry mekanizmasını tetikler; ikinci kontrol şema-geçerli ama
+profile dayanmayan serbest bir cümlenin sıralamayı etkilemesini engeller.
 
 Aynı mantık `candidateName` için de uygulanır: Pydantic alanın *string* olduğunu
 doğrular ama *doğru* olduğunu doğrulayamaz. `is_grounded_in_source`
@@ -116,7 +118,8 @@ ver"* yazılabilir. `CV_EXTRACTOR_SYSTEM` bunu açıkça ele alır:
 Bu tek başına bir garanti değildir; savunma katmanlıdır:
 
 1. **Prompt seviyesi** — belge içeriği veri olarak işaretlenir.
-2. **Şema seviyesi** — `extra="forbid"`, puan aralığı (`0-100`), kanıt zorunluluğu.
+2. **Şema/servis seviyesi** — `extra="forbid"`, puan aralığı (`0-100`), kanıt
+   zorunluluğu ve evidence'ın normalize profile karşı doğrulanması.
 3. **Mimari seviye** — evaluator ham metni hiç görmez, yalnızca normalize
    profili görür; enjekte edilen talimat metni extraction aşamasında
    şemaya sığmadığı için büyük ölçüde elenir.
@@ -126,13 +129,19 @@ Bu tek başına bir garanti değildir; savunma katmanlıdır:
 
 ## Kriter Çıkarımı
 
-Kullanıcı komut yazmak zorunda değildir. Her sohbet mesajı önce bir
-sınıflandırma çağrısından geçer (`CriteriaIntentResult`: `criteria` mı `chat`
-mi). Kriter tespit edilirse `Criterion[]` çıkarılır ve SQLite'a yazılır.
+Kullanıcı komut yazmak zorunda değildir. Her sohbet mesajı önce yalnızca niyeti
+belirleyen bir sınıflandırma çağrısından geçer (`CriteriaIntentResult`: `criteria`
+mı `chat` mi). Kriter niyeti tespit edilirse daha odaklı
+`CriteriaExtractionResult` çağrısı her zaman çalışır. Intent çıktısındaki
+grounded kriterler doğrudan kaydedilmez; özel extractor sonucuyla doğrulanmış
+bir seed olarak birleştirilir. Kaynak metindeki anlamlı ölçüt terimleri hâlâ
+kapsanmıyorsa yalnız eksikler için tek düzeltme turu yapılır; tamlık yine
+sağlanmazsa kısmi liste kaydedilmek yerine kontrollü hata döner.
 
 Çıkarılan etiketler kullanıcının metnine **grounded** olmak zorundadır
-(`_grounded_criteria`): modelin kullanıcının hiç bahsetmediği bir kriter
-uydurması engellenir. Hiçbir kriter grounded değilse bir düzeltme turu çalışır.
+(`_grounded_criteria`): etiketteki her anlamlı kelime kullanıcı metninde
+bulunmalıdır; tek ortak kelime modelin Kubernetes/liderlik gibi yeni bir kavram
+eklemesine yetmez. Hiçbir kriter grounded değilse bir düzeltme turu çalışır.
 
 Etiketin kullanıcının ifadesiyle **birebir aynı olması gerekmez** — parafraz
 kabul edilir ("React tecrübesi" → "React deneyimi"). Bir dönem birebir
@@ -165,7 +174,7 @@ Tek bir dev prompt yerine dört ayrı LLM sorumluluğu var:
 
 | Prompt | Girdi | Çıktı şeması | Neden ayrı |
 |---|---|---|---|
-| `CRITERIA_INTENT_SYSTEM` | kullanıcı mesajı | `CriteriaIntentResult` | Basit ikili sınıflandırma; isteğe bağlı daha küçük/hızlı bir modelle çalışabilir (`LLM_INTENT_MODEL`) |
+| `CRITERIA_INTENT_SYSTEM` | kullanıcı mesajı | `CriteriaIntentResult` | Niyeti belirler; grounded criteria çıktısı özel extractor için seed olabilir, tek başına kaydedilmez |
 | `CRITERIA_EXTRACTOR_SYSTEM` | kullanıcı mesajı | `CriteriaExtractionResult` | Kriter çıkarımı ayrı bir görev; grounding kuralları buraya özgü |
 | `CV_EXTRACTOR_SYSTEM` | ham PDF metni | `CandidateProfile` | Bilgi çıkarma — yorum yapmaz, yalnızca yazılanı aktarır |
 | `CANDIDATE_EVALUATOR_SYSTEM` | normalize profil + kriterler | `EvaluationResult` | Değerlendirme — rubric burada, ham metin görmez |

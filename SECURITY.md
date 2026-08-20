@@ -6,8 +6,9 @@ dışı bırakılmış ve aşağıda açıkça listelenmiştir.
 
 ## Güvenlik Açığı Bildirimi
 
-Güvenlik açıklarını **public issue olarak açmayın**. Bunun yerine repository
-sahibine doğrudan ulaşın.
+Güvenlik açıklarını **public issue olarak açmayın**. Bunun yerine
+[GitHub Private Vulnerability Reporting](https://github.com/semihbugrasezer/sisoft-project/security/advisories/new)
+üzerinden özel bildirim gönderin.
 
 Bildirimde şunları belirtin: etkilenen bileşen, yeniden üretme adımları,
 beklenen etki. **Bildirime gerçek CV, Telegram token'ı, API anahtarı veya
@@ -41,7 +42,7 @@ Ayrıntı: [docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md) → Prompt Injection.
 | Sohbet geçmişi | SQLite, düz metin | `/reset` çağrılana kadar |
 | Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` çağrılana kadar |
 | Kriterler | SQLite, düz metin | `/reset` veya yeni kriter tanımına kadar |
-| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze` çalıştırılırsa `try/finally` ile hemen silinir (analiz hata alsa bile); (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa veya süreç sert şekilde sonlanıp `finally` çalışmazsa, bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. Temizlik yalnız açılışta çalıştığı için kesintisiz çalışan bir botta bu bir üst sınır garantisi değildir. |
+| **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze`, dosyaları atomik olarak alıp analiz başlamadan kuyruktan çıkarır; analiz sırasında yüklenen yeni dosyalar silinmez; (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. Temizlik yalnız açılışta çalıştığı için kesintisiz çalışan bir botta bu bir üst sınır garantisi değildir. |
 | CV dosyaları (albüm/tekli yükleme) | Yalnızca bellek | Diske hiç yazılmaz |
 
 ## Üretim Öncesi Gerekenler
@@ -67,5 +68,7 @@ eklenmelidir:
 ## Bağımlılıklar
 
 Çalışma zamanı bağımlılıkları alt sınırla (`>=`) tanımlıdır; kesin sürüm
-kilidi (lock file) yoktur. Üretim dağıtımı için `pip-compile`/`uv lock` ile
-üretilmiş kilit dosyası ve düzenli güvenlik taraması (`pip-audit`) önerilir.
+kilidi (lock file) yoktur. GitHub Dependabot uyarıları ve güvenlik güncellemeleri
+etkindir; secret scanning ile push protection da repository düzeyinde açıktır.
+Üretim dağıtımı için ayrıca `pip-compile`/`uv lock` ile üretilmiş kilit dosyası
+ve düzenli güvenlik taraması (`pip-audit`) önerilir.

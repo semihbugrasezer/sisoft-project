@@ -68,7 +68,7 @@ Hepsi kök nedene kadar izlendi, düzeltildi ve regresyon testiyle korundu:
 | Dil sızıntısı: `hrEvaluation` İngilizce dönüyordu | Canlı koşu #1 | Prompt'a Türkçe talimatı; 3 iterasyon sonra regex ile doğrulandı |
 | `"candıdate"` — karışık alfabeli bozuk kelime | Canlı koşu #2 | Prompt'ta "aday" kelimesi zorunlu kılındı |
 | Telegram Markdown parse hatası — kullanıcı raporu hiç göremiyordu | Gerçek Telegram testi | `BadRequest`'te düz metne düşen fallback + regresyon testi |
-| Pending CV'ler istisna durumunda SQLite'ta kalıyordu | Kod incelemesi | `try/finally` ile garantili temizlik |
+| `/analyze` sırasında yeni yüklenen CV'ler temizlenebiliyordu; eşzamanlı analiz aynı kuyruğu okuyabiliyordu | Bağımsız audit + yarış testi | Kuyruğu analizden önce atomik olarak alıp silen `take_pending_files` |
 | Tam-sınır durumunda `truncated` yanlış `False` dönüyordu | Kod incelemesi | Parser'ın sayfa sayısına bakması + regresyon testi |
 | Kriter etiketinde birebir zorunluluğu eklenmişti — **PDF'de olmayan bir kısıt** | PDF'in kendi JSON örneğinin `"Clean Code"` içermesi (düz metin örneği ise `"temiz kod yazımı"` diyor) | Kısıt kaldırıldı; yalnızca grounding (uydurma kriter reddi) korundu |
 | Anahtar-kelime kısayolu kriter algılamayı bozdu | **Mevcut test paketi anında kırdı** | Yaklaşım geri alındı; yerine opsiyonel `LLM_INTENT_MODEL` |
@@ -85,7 +85,7 @@ düzeltildi, kod olduğu gibi bırakıldı.**
 
 AI araçlarının ve bağımsız incelemelerin her önerisi uygulanmadı. Örnekler:
 
-**Kabul edilenler:** `try/finally` ile CV temizliği, truncation sınır
+**Kabul edilenler:** atomik pending-CV alımı, truncation sınır
 düzeltmesi, jenerik `LLM_*` konfigürasyon adları, mypy'ın CI'a eklenmesi,
 dokümantasyon doğruluk düzeltmeleri.
 

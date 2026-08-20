@@ -224,10 +224,12 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     container = _container(context)
-    await container.repo.clear_history(chat_id)
-    await container.repo.clear_criteria(chat_id)
-    await container.repo.clear_pending_files(chat_id)
-    _batch_mode_chats(context).discard(chat_id)
+    # Devam eden sohbet yanıtı reset sonrasında geçmişi yeniden yazamasın.
+    async with _chat_lock(context, chat_id, "text"):
+        await container.repo.clear_history(chat_id)
+        await container.repo.clear_criteria(chat_id)
+        await container.repo.clear_pending_files(chat_id)
+        _batch_mode_chats(context).discard(chat_id)
     await update.message.reply_text("Sohbet geçmişi ve kriterler sıfırlandı.")
 
 
@@ -353,8 +355,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat_id = update.effective_chat.id
     container = _container(context)
 
-    files = await container.repo.get_pending_files(chat_id)
-    if not files:
+    queued_files = await container.repo.get_pending_files(chat_id)
+    if not queued_files:
         await update.message.reply_text(
             "Kuyrukta CV yok. /batch ile toplu mod açıp PDF gönderin, "
             "ya da PDF'leri albüm olarak birlikte seçip gönderin."
@@ -367,17 +369,18 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(exc.user_message)
         return
 
+    files = await container.repo.take_pending_files(chat_id)
+    if not files:
+        await update.message.reply_text(
+            "Kuyruktaki CV'ler başka bir analiz tarafından alınmış. Yeni PDF yükleyebilirsiniz."
+        )
+        return
+
     _batch_mode_chats(context).discard(chat_id)
     await update.message.reply_text(
         f"{len(files)} CV işleniyor, botu bu sırada kullanmaya devam edebilirsin..."
     )
-    # finally: _process_files beklenmeyen (AppError olmayan) bir istisna fırlatırsa
-    # bile CV BLOB'ları SQLite'ta kalmasın — kişisel veri için cleanup best-effort
-    # değil garanti olmalı (bkz. SECURITY.md).
-    try:
-        await _process_files(context, chat_id, files, criteria)
-    finally:
-        await container.repo.clear_pending_files(chat_id)
+    await _process_files(context, chat_id, files, criteria)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

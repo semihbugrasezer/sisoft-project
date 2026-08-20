@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from validate_assignment import _label_matches  # noqa: E402
+from validate_assignment import _label_matches, _matches  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,8 @@ from validate_assignment import _label_matches  # noqa: E402
         # GERİLEME KORUMASI: eksik etiket kabul edilmemeli
         ("React tecrübesi", "React", False),
         ("temiz kod yazımı", "temiz kod", False),
-        # Parafraz kabul edilmemeli (birebir-etiket sözleşmesi)
+        # Düşük seviyeli eşleştirici parafraz bilmez; ödevin açık alias'ları
+        # `_matches` tarafından ayrıca ele alınır.
         ("React tecrübesi", "React deneyimi", False),
         # Tamamen farklı kriter
         ("React tecrübesi", "uzaktan çalışma uyumu", False),
@@ -37,3 +38,16 @@ from validate_assignment import _label_matches  # noqa: E402
 )
 def test_label_matching(expected, actual, should_match):
     assert _label_matches(expected, actual) is should_match
+
+
+@pytest.mark.parametrize(
+    ("expected", "actual"),
+    [
+        ("React tecrübesi", "React deneyimi"),
+        ("temiz kod yazımı", "Clean Code"),
+        ("uzaktan çalışma uyumu", "uzaktan çalışma uyumlu"),
+    ],
+)
+def test_assignment_semantic_aliases_match_without_accepting_partial_labels(expected, actual):
+    assert _matches(expected, [actual]) is True
+    assert _matches(expected, [actual.split()[0]]) is False

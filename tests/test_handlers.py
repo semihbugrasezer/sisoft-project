@@ -13,7 +13,12 @@ from app.domain.models import (
     MultiAnalysisResponse,
     TopCandidate,
 )
-from app.presentation.telegram.handlers import _process_files, text_message
+from app.presentation.telegram.handlers import (
+    _process_files,
+    analyze_command,
+    reset_command,
+    text_message,
+)
 
 
 @pytest.mark.asyncio
@@ -312,3 +317,129 @@ async def test_bot_still_answers_chat_while_batch_is_running():
 
     batch_may_finish.set()
     await batch
+
+
+@pytest.mark.asyncio
+async def test_analyze_does_not_delete_files_uploaded_while_analysis_is_running():
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    criteria = [Criterion(id="react", label="React", description="x")]
+
+    class Repo:
+        def __init__(self):
+            self.pending = [("a.pdf", b"a"), ("b.pdf", b"b")]
+
+        async def get_pending_files(self, chat_id):
+            return list(self.pending)
+
+        async def take_pending_files(self, chat_id):
+            files, self.pending = self.pending, []
+            return files
+
+        async def clear_pending_files(self, chat_id):
+            self.pending = []
+
+    class CriteriaService:
+        async def get_active_criteria(self, chat_id):
+            return criteria
+
+    class BatchService:
+        async def analyze_batch(self, files, active_criteria):
+            started.set()
+            await finish.wait()
+            return MultiAnalysisResponse(
+                status="success",
+                processedCVCount=2,
+                userDefinedCriteria=["React"],
+                topCandidates=[
+                    TopCandidate(rank=1, candidateName="A", pdfFileName="a.pdf",
+                                 dynamicScores={"React": 90}, averageScore=90,
+                                 hrEvaluation="x"),
+                    TopCandidate(rank=2, candidateName="B", pdfFileName="b.pdf",
+                                 dynamicScores={"React": 80}, averageScore=80,
+                                 hrEvaluation="x"),
+                ],
+            ), []
+
+    class Bot:
+        async def send_message(self, *args, **kwargs):
+            pass
+
+    async def reply_text(*args, **kwargs):
+        pass
+
+    repo = Repo()
+    container = SimpleNamespace(
+        repo=repo,
+        criteria_service=CriteriaService(),
+        batch_service=BatchService(),
+    )
+    context = SimpleNamespace(
+        bot=Bot(),
+        application=SimpleNamespace(bot_data={"container": container}),
+    )
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=1),
+        message=SimpleNamespace(reply_text=reply_text),
+    )
+
+    task = asyncio.create_task(analyze_command(update, context))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    repo.pending.append(("new.pdf", b"new"))
+    finish.set()
+    await task
+
+    assert repo.pending == [("new.pdf", b"new")]
+
+
+@pytest.mark.asyncio
+async def test_reset_waits_for_in_flight_chat_before_clearing_history():
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    order = []
+
+    class CriteriaService:
+        async def define_if_requested(self, chat_id, text):
+            return None
+
+    class ChatService:
+        async def reply(self, chat_id, text):
+            started.set()
+            await finish.wait()
+            order.append("reply")
+            return "yanıt"
+
+    class Repo:
+        async def clear_history(self, chat_id):
+            order.append("clear_history")
+
+        async def clear_criteria(self, chat_id):
+            pass
+
+        async def clear_pending_files(self, chat_id):
+            pass
+
+    async def reply_text(*args, **kwargs):
+        pass
+
+    container = SimpleNamespace(
+        criteria_service=CriteriaService(),
+        chat_service=ChatService(),
+        repo=Repo(),
+    )
+    context = SimpleNamespace(application=SimpleNamespace(bot_data={"container": container}))
+    chat_update = _text_update(1, "merhaba", [])
+    reset_update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=1),
+        message=SimpleNamespace(reply_text=reply_text),
+    )
+
+    chat_task = asyncio.create_task(text_message(chat_update, context))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    reset_task = asyncio.create_task(reset_command(reset_update, context))
+    await asyncio.sleep(0)
+
+    assert not reset_task.done()
+    finish.set()
+    await asyncio.gather(chat_task, reset_task)
+    assert order == ["reply", "clear_history"]
