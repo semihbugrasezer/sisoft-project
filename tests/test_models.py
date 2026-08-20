@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domain.models import CriterionScore, MultiAnalysisResponse, TopCandidate
+from app.domain.models import (
+    CriterionScore,
+    EvaluationResult,
+    MultiAnalysisResponse,
+    TopCandidate,
+)
 
 
 def test_high_score_without_real_evidence_is_rejected():
@@ -102,3 +107,41 @@ def test_candidate_rejects_score_outside_range():
             averageScore=90.0,
             hrEvaluation="uygun",
         )
+
+
+def _evaluation_kwargs(**overrides):
+    base = dict(
+        scores=[
+            CriterionScore(
+                criterionId="react", criterionLabel="React", score=80,
+                evidence=["5 yıl React"], reason="x",
+            )
+        ],
+        strengths=["güçlü yön"],
+        weaknesses=["zayıf yön"],
+        recommendations=["tavsiye"],
+        hrEvaluation="uygun",
+    )
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize("empty_field", ["strengths", "weaknesses", "recommendations"])
+def test_qualitative_report_sections_cannot_be_empty(empty_field):
+    # Ödev PDF §2 raporda güçlü yönler, zayıf yönler VE gelişim tavsiyeleri
+    # istiyor. Boş liste şemaya uysaydı rapor "(belirtilmedi)" ile çıkardı —
+    # kabul testi bunu gerçek bir modelde yakalamıştı. Prompt, gerçek bir zayıf
+    # yön yoksa uydurmak yerine "tespit edilmedi" yazmasını söyler.
+    with pytest.raises(ValidationError):
+        EvaluationResult(**_evaluation_kwargs(**{empty_field: []}))
+
+
+def test_qualitative_report_accepts_explicit_not_detected_wording():
+    # Bölümü doldurmak için sahte bir zayıf yön uydurmak İSTEMİYORUZ; dürüst
+    # "tespit edilmedi" ifadesi geçerli bir içeriktir.
+    evaluation = EvaluationResult(
+        **_evaluation_kwargs(
+            weaknesses=["Tanımlanan kriterler kapsamında belirgin bir zayıf yön tespit edilmedi."]
+        )
+    )
+    assert evaluation.weaknesses

@@ -27,8 +27,8 @@ def test_single_analysis_escapes_dynamic_markdown():
         EvaluationResult(
             scores=[],
             strengths=["Python *ileri*"],
-            weaknesses=[],
-            recommendations=[],
+            weaknesses=["zayıf yön"],
+            recommendations=["tavsiye"],
             hrEvaluation="[uygun]",
         ),
     )

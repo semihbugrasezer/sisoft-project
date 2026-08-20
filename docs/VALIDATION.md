@@ -163,13 +163,15 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
   kararı. PDF validation/extraction paraleldir; LLM extraction/evaluation
   tüm belgeler için tek bir toplu istektir (tek yerel model sunucusunu N ayrı
   istekle boğmamak için bilinçli tercih).
-- **Nitel rapor alanları boş kalabiliyor** — kabul testinin (`scripts/validate_assignment.py`)
-  ilk koşusunda `qwen2.5:7b`, kriterlerin üçünü de doğru puanladığı hâlde
+- ~~**Nitel rapor alanları boş kalabiliyor**~~ — **çözüldü.** Kabul testinin ilk
+  koşusunda `qwen2.5:7b`, kriterlerin üçünü de doğru puanladığı hâlde
   `strengths`/`weaknesses`/`recommendations` bölümlerinden en az birini boş
-  bıraktı. Prompt bu alanları açıkça istiyor; şema da boş listeye izin veriyor
-  (bir aday için gerçekten zayıf yön olmayabilir), dolayısıyla bu bir kod hatası
-  değil model kalitesi sınırıdır. Kabul testi bunu artık ölçüyor ve hangi alanın
-  boş kaldığını raporluyor.
+  bıraktı; rapor "(belirtilmedi)" ile çıkıyordu. Önce "model kalitesi sınırı"
+  diye sınıflandırıldı, ancak ödev PDF §2 bu üç bölümü opsiyonel bırakmıyor —
+  yani bu bir **şema sözleşmesi boşluğuydu**. `EvaluationResult` alanlarına
+  `min_length=1` eklendi ve prompt'a "gerçek bir zayıf yön yoksa UYDURMA,
+  'tespit edilmedi' yaz" kuralı girdi: bölüm dolu kalır, içerik dürüst olur.
+  Boş liste artık `ValidationError` → mevcut tek-seferlik düzeltme retry'ı.
 - **Aksanlı isimlerde model bozulması** — 7B model Türkçe aksanlı bir ismi
   kopyalarken harf değiştirebiliyor. Kod tarafında kaynak-doğrulama +
   düzeltme turu ile ele alındı (koşu #6); modelin kendisi düzelmedi.
