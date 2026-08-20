@@ -20,7 +20,7 @@ from app.presentation.telegram.handlers import _process_files, text_message
 async def test_oversized_top_three_json_is_sent_as_one_document():
     response = MultiAnalysisResponse(
         status="success",
-        processedCVCount=2,
+        processedCVCount=1,
         userDefinedCriteria=["React"],
         topCandidates=[
             TopCandidate(
@@ -240,3 +240,75 @@ async def test_different_chats_are_not_serialized_against_each_other():
     assert order[0].startswith("intent:")
     assert order[1].startswith("intent:")
     assert len(replies) == 2
+
+
+@pytest.mark.asyncio
+async def test_bot_still_answers_chat_while_batch_is_running():
+    """Ödevin açık şartı: çoklu CV işlenirken bot yanıt vermeye devam etmeli.
+
+    Bu, kilit tasarımının doğrudan testi: analiz ve sohbet AYRI lock ailelerinde
+    olduğu için 14 dakikalık bir batch, aynı sohbetten gelen mesajı bloklamaz.
+    Tek bir lock kullanılsaydı bu test asılı kalırdı.
+    """
+    batch_started = asyncio.Event()
+    batch_may_finish = asyncio.Event()
+
+    class SlowBatchService:
+        async def analyze_batch(self, files, criteria):
+            batch_started.set()
+            await batch_may_finish.wait()  # batch "14 dakika" sürüyor
+            return MultiAnalysisResponse(
+                status="success", processedCVCount=2, userDefinedCriteria=["React"],
+                topCandidates=[
+                    TopCandidate(rank=1, candidateName="A", pdfFileName="a.pdf",
+                                 dynamicScores={"React": 90}, averageScore=90.0,
+                                 hrEvaluation="iyi"),
+                    TopCandidate(rank=2, candidateName="B", pdfFileName="b.pdf",
+                                 dynamicScores={"React": 80}, averageScore=80.0,
+                                 hrEvaluation="iyi"),
+                ],
+            ), []
+
+    class CriteriaService:
+        async def define_if_requested(self, chat_id, text):
+            return None  # sohbet
+
+    class ChatService:
+        async def reply(self, chat_id, text):
+            return "sohbet yanıtı"
+
+    class Bot:
+        def __init__(self):
+            self.messages = []
+
+        async def send_message(self, chat_id, text, parse_mode=None):
+            self.messages.append(text)
+
+    container = SimpleNamespace(
+        batch_service=SlowBatchService(),
+        criteria_service=CriteriaService(),
+        chat_service=ChatService(),
+    )
+    context = SimpleNamespace(
+        bot=Bot(),
+        application=SimpleNamespace(bot_data={"container": container}),
+    )
+    chat_id = 42
+
+    batch = asyncio.create_task(
+        _process_files(context, chat_id, [("a.pdf", b"a"), ("b.pdf", b"b")],
+                       [Criterion(id="react", label="React", description="x")])
+    )
+    await asyncio.wait_for(batch_started.wait(), timeout=1)
+
+    # Batch HÂLÂ çalışırken aynı sohbetten mesaj gönder
+    replies: list[str] = []
+    await asyncio.wait_for(
+        text_message(_text_update(chat_id, "merhaba", replies), context), timeout=1
+    )
+
+    assert replies == ["sohbet yanıtı"], "batch sürerken sohbet yanıtı gelmedi"
+    assert not batch.done(), "batch beklenmedik şekilde bitmiş, test anlamsız"
+
+    batch_may_finish.set()
+    await batch
