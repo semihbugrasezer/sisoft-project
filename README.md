@@ -9,6 +9,15 @@ eden bir Telegram botu. Backend Python ile yazılmıştır; katmanlı bir mimari
 (`domain / application / infrastructure / presentation`) sahiptir ve arka
 planda **Ollama**, **LM Studio** veya **vLLM**'den herhangi biriyle çalışabilir.
 
+## Demo
+
+Gerçek Telegram üzerinden, gerçek yerel Ollama sunucusuna (`qwen2.5:7b`) karşı
+canlı çalıştırılan 5 CV'lik toplu analiz — top-3 JSON çıktısı, ödev PDF §4
+şemasıyla birebir:
+
+<img src="docs/images/demo-batch-json-1.png" alt="Telegram'da 5 CV albüm gönderimi ve top-3 JSON çıktısının başlangıcı" width="480">
+<img src="docs/images/demo-batch-json-2.png" alt="Top-3 JSON çıktısının devamı — rank, dynamicScores, averageScore, hrEvaluation" width="480">
+
 ## Özellikler
 
 - **Genel sohbet** — bağlamı (chat history) koruyan, backend'de güvenli
@@ -58,9 +67,16 @@ domain/                  → Pydantic şemaları ve saf iş mantığı (skorlama
 infrastructure/          → LLM istemcileri (Ollama/OpenAI-uyumlu), PDF parser, SQLite
 ```
 
-Bağımlılıklar tek yönde akar: `presentation → application → domain`;
-`infrastructure` bu ikisinin arayüzlerini uygular. `container.py`
-bağımlılıkları tek yerde kurar (framework yok, basit constructor injection).
+Bağımlılıklar tek yönde akar: `presentation → application → domain`.
+Pragmatik bir katmanlı mimari: `domain` framework'ten tamamen bağımsızdır.
+LLM erişimi tam ports-and-adapters ile soyutlanmıştır — `application` yalnızca
+`LLMPort` arayüzüne bağımlıdır, `OllamaClient`/`OpenAICompatibleClient`
+`infrastructure`'da değiştirilebilir (bkz. Teknoloji). Persistence (`SQLiteRepo`)
+ve PDF parser ise `application` tarafından doğrudan kullanılır — bu projenin
+ölçeğinde ayrı bir arayüz eklemek karşılıksız bir soyutlama olurdu; tek
+implementasyon var ve test edilirken sahte (fake) nesnelerle kolayca
+değiştiriliyor. `container.py` bağımlılıkları tek yerde kurar (framework yok,
+basit constructor injection).
 
 ```mermaid
 flowchart LR
@@ -135,13 +151,13 @@ python main.py
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | BotFather'dan alınan token |
 | `LLM_BACKEND` | `ollama` (varsayılan) veya `openai_compatible` |
-| `OLLAMA_BASE_URL` | LLM sunucu adresi (Ollama, LM Studio veya vLLM) |
-| `OLLAMA_MODEL` | Kullanılacak model adı |
-| `OLLAMA_MAX_CONCURRENCY` | Sunucuya aynı anda gidebilecek istek sayısı |
+| `LLM_BASE_URL` | LLM sunucu adresi (Ollama, LM Studio veya vLLM) |
+| `LLM_MODEL` | Kullanılacak model adı |
+| `LLM_MAX_CONCURRENCY` | Sunucuya aynı anda gidebilecek istek sayısı |
 
 `LLM_BACKEND=openai_compatible` ayarlandığında bot, Ollama'nın kendi
 `/api/chat` ucu yerine `/v1/chat/completions` üzerinden LM Studio veya vLLM
-ile konuşur — `OLLAMA_BASE_URL`/`OLLAMA_MODEL` değişmez, yalnızca farklı bir
+ile konuşur — `LLM_BASE_URL`/`LLM_MODEL` değişmez, yalnızca farklı bir
 sunucuya işaret eder. Application servisleri hangi backend'in çalıştığını
 bilmez; ikisi de aynı `LLMPort` arayüzünü uygular (`app/domain/ports.py`).
 
@@ -183,11 +199,13 @@ tavsiyeleri ve genel değerlendirme içeren Markdown rapor.
 ## Test
 
 ```bash
+pip install -r requirements-dev.txt   # pytest, ruff, mypy — çalışma zamanı için gerekmez
 python -m pytest tests/ -v
+ruff check app main.py tests scripts
 ```
 
 Ortalama hesaplama, top-3 sıralama, PDF doğrulama, kriter çıkarımı, sohbet
-bağlamı ve Telegram handler'ları için 78 birim/entegrasyon testi içerir.
+bağlamı ve Telegram handler'ları için 79 birim/entegrasyon testi içerir.
 Ayrıca gerçek yerel model sunuculara (Ollama, LM Studio) karşı canlı testlerle
 doğrulandı — bkz. [docs/VALIDATION.md](docs/VALIDATION.md).
 
@@ -209,6 +227,15 @@ python scripts/generate_invalid_cvs.py   # mock_cvs/invalid/ altına 4 geçersiz
   tercih, bkz. [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)).
 - **20.000 karakter extraction sınırı** — çok uzun CV'ler bu sınıra kırpılır;
   kullanıcı Telegram'da bir uyarı mesajıyla bilgilendirilir.
+
+## Veri Saklama ve Güvenlik
+
+Sohbet geçmişi, özetler ve kriterler SQLite'ta düz metin olarak tutulur.
+`/batch` akışıyla yüklenen CV'ler işlenene kadar geçici olarak SQLite'a
+yazılır ve `/analyze` tamamlanır tamamlanmaz silinir (albüm/tekli yükleme
+hiç diske yazılmaz, doğrudan bellekte işlenir). Bu bir demo/mülakat
+projesidir: **encryption-at-rest yoktur**; gerçek İK verisiyle üretimde
+kullanılmadan önce uygun bir veri saklama ve şifreleme politikası eklenmelidir.
 
 ## Detaylı Dokümantasyon
 

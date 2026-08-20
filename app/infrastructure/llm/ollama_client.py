@@ -81,7 +81,7 @@ class OllamaClient:
 
         `model`: verilmezse `__init__`'teki ana model kullanılır. İsteğe bağlı override —
         örn. intent-classification gibi basit/ikili görevler için daha küçük/hızlı bir
-        model (`OLLAMA_INTENT_MODEL`) geçirilebilir; extraction/evaluation gibi karmaşık
+        model (`LLM_INTENT_MODEL`) geçirilebilir; extraction/evaluation gibi karmaşık
         görevler ana modelde kalmaya devam eder."""
         schema = response_model.model_json_schema()
         messages = [

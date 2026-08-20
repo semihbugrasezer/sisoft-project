@@ -23,7 +23,8 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 | 3 | Yalnız batch (candidate-fix testi) | 476.7s | Regex ile otomatik ölçüldü (Kiril script + `\bcandidate\b`): üç adayda da `mixed_script=False`, `english_leak=False`. | **Temiz.** Örnek: *"Bu aday, React deneyimine sahip ve uzaktan çalışma uyumlu bir profesyoneldir..."* |
 | 4 | Rolling summary (ayrı koşu, aşağıda) | 84.0s (chat) | — | Rolling summary mekanizması doğrulandı. |
 | 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı; `openai_compatible` backend'i 7B+ sınıfı bir modelle kullanılmalı. |
-| 6 | Gerçek kullanıcı CV'si (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanı adı hatalı çıkardı ("Semih Buğra Sezer" → "Semhi Bügüra Sezer") — harf yer değiştirmesi, Türkçe aksanlı karakterlerde (ğ) model kaynaklı bir hata. | Prompt zaten "candidateName alanına birebir aktar" talimatı içeriyor (`CV_EXTRACTOR_SYSTEM`) — bu bir prompt eksikliği değil, 7B modelin nadir/aksanlı token'larda ad kopyalarken yaptığı bir hallüsinasyon. Kayıtlı bilinen sınırlama; ölçülebilir tek bir örnekle prompt'u aşırı-uydurmak yerine belgelenmesi tercih edildi. |
+| 6 | Gerçek (anonimleştirilmiş) bir CV, Türkçe aksanlı karakterler içeriyor (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanında harf yer değiştirmesi gözlendi (ör. "ğ" içeren bir isimde iki harf yer değiştirdi) — Türkçe aksanlı karakterlerde model kaynaklı bir hata. | Prompt zaten "candidateName alanına birebir aktar" talimatı içeriyor (`CV_EXTRACTOR_SYSTEM`) — bu bir prompt eksikliği değil, 7B modelin nadir/aksanlı token'larda ad kopyalarken yaptığı bir hallüsinasyon. Kayıtlı bilinen sınırlama; ölçülebilir tek bir örnekle prompt'u aşırı-uydurmak yerine belgelenmesi tercih edildi. |
+| 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
 
 Girdi metni toplamda yalnızca ~834 token (5 mock CV, ilk üç koşu). Ölçülen süre
 CV boyutundan gelmez; kaynağı 5 iç içe `CandidateProfile`/`evaluation`
@@ -45,10 +46,10 @@ test edilmedi — Apple Silicon GPU desteklemediği için bu ortamda
 
 ## Performans Darboğazı ve Optimizasyon Seçenekleri
 
-"Hızlı" göreceli bir kavramdır. Ölçümler kodun optimal noktada olduğunu
-gösterir; kalan gecikme mimariden değil, tek yerel 7B modelin token üretim
-hızından gelir. Aşağıdaki üç seçenek mimariyi bozmadan uygulanabilir; bu
-turda kapsam dışı bırakıldı.
+"Hızlı" göreceli bir kavramdır. Bu ortamda ölçülen profil, gecikmenin baskın
+kaynağının mimari değil tek yerel 7B modelin token üretim hızı olduğunu
+gösteriyor. Aşağıdaki üç seçenek mimariyi bozmadan uygulanabilir; bu turda
+kapsam dışı bırakıldı.
 
 1. **Üretim ortamı: vLLM veya bulut GPU.** Dedicated GPU ve vLLM'in continuous
    batching'i süreyi düşürür. Bunun için ayrı bir adaptör yazmaya gerek yok —
@@ -61,7 +62,7 @@ turda kapsam dışı bırakıldı.
    değiştirmek doğruluk/hız trade-off'u taşır ve canlı test edilmedi. Daha dar
    kapsamlı bir versiyonu uygulandı ve test edildi: intent-classification
    (kriter mi/sohbet mi) isteğe bağlı ayrı bir model kullanabilir
-   (`OLLAMA_INTENT_MODEL`). Değişken boşsa davranış değişmez; ayarlanırsa
+   (`LLM_INTENT_MODEL`). Değişken boşsa davranış değişmez; ayarlanırsa
    yalnızca günlük sohbetteki ilk sınıflandırma çağrısı hızlanır,
    extraction/evaluation ana modelde kalır.
 3. **Paralel per-CV çağrı.** Şu anki "5 CV tek batch çağrıda" tasarımı yerine
@@ -73,7 +74,7 @@ turda kapsam dışı bırakıldı.
 
 ## Dördüncü Koşu — Rolling Summary
 
-Rolling summary ve `OLLAMA_INTENT_MODEL` ilk üç koşudan sonra eklendi. Bu
+Rolling summary ve `LLM_INTENT_MODEL` ilk üç koşudan sonra eklendi. Bu
 yüzden ayrı bir dördüncü canlı koşuyla doğrulandı (gerçek `qwen2.5:7b`, toplam
 süre 84.0 saniye — düz `chat` çağrıları olduğu için kısıtlı JSON üretiminden
 çok daha hızlı). Senaryo: kimlik bilgisi veren bir ilk mesaj, pencereyi
@@ -99,7 +100,7 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 ## Bilinen Sınırlamalar
 
 - **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8-10
-  dakika sürer (yukarıya bakın). Kod tarafı optimaldir; darboğaz model/donanım.
+  dakika sürer (yukarıya bakın). Darboğaz model/donanımdır, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler `validate_and_extract_text`
   tarafından "okunabilir metin bulunamadı" hatasıyla reddedilir, OCR ile
   işlenmez. Ödev PDF'i zaten okunamaz belgelerin validation'da yakalanmasını

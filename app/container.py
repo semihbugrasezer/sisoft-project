@@ -30,17 +30,17 @@ def _build_llm(config: Config) -> LLMPort:
     /v1/chat/completions (LM Studio, vLLM, Ollama'nın kendi uyumlu ucu) seçilir."""
     if config.llm_backend == "openai_compatible":
         return OpenAICompatibleClient(
-            config.ollama_base_url,
-            config.ollama_model,
+            config.llm_base_url,
+            config.llm_model,
             config.llm_timeout,
-            max_concurrency=config.ollama_max_concurrency,
+            max_concurrency=config.llm_max_concurrency,
             api_key=config.llm_api_key,
         )
     return OllamaClient(
-        config.ollama_base_url,
-        config.ollama_model,
+        config.llm_base_url,
+        config.llm_model,
         config.llm_timeout,
-        max_concurrency=config.ollama_max_concurrency,
+        max_concurrency=config.llm_max_concurrency,
     )
 
 
@@ -53,7 +53,7 @@ def build_container(config: Config) -> Container:
         llm=llm,
         repo=repo,
         chat_service=ChatService(llm, repo),
-        criteria_service=CriteriaService(llm, repo, intent_model=config.ollama_intent_model),
+        criteria_service=CriteriaService(llm, repo, intent_model=config.llm_intent_model),
         cv_service=cv_service,
         batch_service=BatchAnalysisService(cv_service),
     )
