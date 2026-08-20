@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import BaseModel
 
-from app.domain.errors import LLMUnavailableError, LLMOutputValidationError
+from app.domain.errors import LLMOutputValidationError, LLMUnavailableError
 from app.infrastructure.llm.openai_compatible_client import OpenAICompatibleClient
 
 

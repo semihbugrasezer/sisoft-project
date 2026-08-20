@@ -5,12 +5,12 @@ import logging
 import re
 
 from app.domain.errors import LLMOutputValidationError, NoCriteriaDefinedError
-
-logger = logging.getLogger(__name__)
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
 from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
+
+logger = logging.getLogger(__name__)
 
 # NOT: Burada bir anahtar-kelime heuristic'i ile intent-classifier LLM çağrısını
 # atlamayı denedik (düz sohbet mesajlarını hızlandırmak için) — ama

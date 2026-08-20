@@ -11,11 +11,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from app.application.cv_analysis_service import CVAnalysisService
 from app.domain.errors import AppError, PDFValidationError
 from app.domain.models import MAX_CV_COUNT, Criterion, MultiAnalysisResponse, TopCandidate
 from app.domain.scoring import compute_average, dynamic_scores_dict, rank_top_n
+
+logger = logging.getLogger(__name__)
+
 
 class BatchAnalysisService:
     def __init__(self, cv_service: CVAnalysisService):
@@ -37,7 +41,7 @@ class BatchAnalysisService:
         )
 
         candidates: list[TopCandidate] = []
-        for (filename, _, _), (profile, evaluation) in zip(texts, analyses):
+        for (filename, _, _), (profile, evaluation) in zip(texts, analyses, strict=True):
             candidates.append(
                 TopCandidate(
                     rank=0,  # rank_top_n atayacak
@@ -62,12 +66,14 @@ class BatchAnalysisService:
     ) -> list[tuple[str, str, bool]]:
         """Tüm dosyaları paralel doğrular/metnini çıkarır. Biri bile geçersizse
         tüm batch'i PDFValidationError ile reddeder (LLM'e hiç gönderilmez)."""
+        logger.info("PDF validation başlıyor (%d dosya)", len(files))
         outcomes = await asyncio.gather(
             *(self._cv_service.extract_text(data) for _, data in files),
             return_exceptions=True,
         )
+        logger.info("PDF validation bitti")
         errors: list[str] = []
-        for (name, _), outcome in zip(files, outcomes):
+        for (name, _), outcome in zip(files, outcomes, strict=True):
             if isinstance(outcome, AppError):
                 errors.append(name)
             elif isinstance(outcome, BaseException):
@@ -78,4 +84,4 @@ class BatchAnalysisService:
                 f"Şu dosyalar geçersiz olduğu için toplu analiz başlatılmadı: {bad_names}. "
                 "Sorunlu dosyaları çıkarıp tekrar gönderin."
             )
-        return [(name, text, truncated) for (name, _), (text, truncated) in zip(files, outcomes)]
+        return [(name, text, truncated) for (name, _), (text, truncated) in zip(files, outcomes, strict=True)]

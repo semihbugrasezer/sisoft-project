@@ -5,6 +5,7 @@ import pymupdf as fitz
 
 from app.domain.errors import PDFValidationError
 
+
 def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) -> str:
     """Bozuk/şifreli/boş PDF'i sade Türkçe hata mesajıyla reddeder, geçerliyse metni döner.
 
