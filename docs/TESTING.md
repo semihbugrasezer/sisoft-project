@@ -21,7 +21,7 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **90 test**, 15 dosyada:
+Toplam **99 test**, 16 dosyada:
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
@@ -30,7 +30,7 @@ Toplam **90 test**, 15 dosyada:
 | `test_models.py` | 8 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
 | `test_sqlite_repo.py` | 7 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
 | `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
-| `test_cv_analysis_service.py` | 6 | Kriter kimliği zorlaması, ham metnin evaluator'a sızmaması, batch context bütçesi |
+| `test_cv_analysis_service.py` | 8 | Kriter kimliği zorlaması, ham metnin evaluator'a sızmaması, batch context bütçesi |
 | `test_openai_compatible_client.py` | 6 | LM Studio/vLLM uyumlu istemci, `response_format` sözleşmesi, retry, Bearer token |
 | `test_chat_service.py` | 5 | Sıcak pencere + rolling summary, özetleme hatasında veri kaybı olmaması |
 | `test_config.py` | 5 | Backend seçimi, geçersiz değer reddi, zorunlu token |
@@ -39,6 +39,7 @@ Toplam **90 test**, 15 dosyada:
 | `test_media_group_collector.py` | 4 | Albüm toplama, debounce, limit |
 | `test_formatter.py` | 3 | Markdown rapor, JSON çıktı biçimi |
 | `test_ollama_client.py` | 2 | `/api/chat` sözleşmesi, şema retry'ı |
+| `test_grounding.py` | 7 | candidateName kaynak-doğrulama: aksanlı isim bozulması, uydurma ad, sıralama/büyük-küçük harf toleransı |
 | `test_router.py` | 1 | Eşzamanlı update kabulü |
 
 ## Neyin Taklit Edildiği (ve Neyin Edilmediği)
@@ -66,6 +67,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 | `test_free_text_without_keyword_can_define_criteria` | Anahtar-kelime kısayolu denendi; bu test onu anında kırdı ve yaklaşım geri alındı |
 | `test_more_than_five_cvs_is_rejected_before_processing` | 5 CV limiti LLM'e gitmeden önce uygulanmalı |
 | `test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles` | Ham CV metninin evaluator prompt'una sızmaması (ödevin çekirdek şartı) |
+| `test_model_corrupted_turkish_name_is_rejected` / `test_corrupted_candidate_name_triggers_retry_and_is_fixed` | Canlı koşuda model Türkçe aksanlı ismi bozdu; bozuk ad sessizce rapora giriyordu |
 | `test_same_chat_messages_are_processed_in_arrival_order` | Niyet sınıflandırması kilit dışındaydı; aynı sohbetten hızlı gelen iki mesaj sohbet geçmişine ters sırada yazılabiliyordu |
 | `test_batch_budget_trims_only_when_total_exceeds_limit` | 5 × 20.000 karakterlik batch prompt'u yerel modelin context window'unu taşırabiliyordu |
 
@@ -77,7 +79,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  90 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  99 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 

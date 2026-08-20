@@ -94,7 +94,7 @@ dokümantasyon doğruluk düzeltmeleri.
 | Öneri | Neden reddedildi |
 |---|---|
 | CV başına paralel LLM isteği | Tek yerel model GPU'da zaten seri işliyor; N istek gerçek paralellik getirmez, token maliyetini ve timeout riskini artırır. Ölçülmüş, çalışan bir tasarımı bozardı. |
-| `candidateName` için grounding validator | Tek bir gözlemlenen örnek üzerine kural yazmak aşırı-uydurma (overfitting) olurdu; bilinen sınırlama olarak belgelendi. |
+| ~~`candidateName` için grounding validator~~ | Önce "tek örnek üzerine overfitting" diye reddedildi, sonra **uygulandı**: kontrol belirli bir isme özel değil, alan-genel bir invariant ("ad kaynak metinde geçmeli"). Bkz. `app/domain/grounding.py`. |
 | Vector database / RAG | Retrieval gerektiren belge koleksiyonu yok. |
 | Kalıcı `development` branch | Tek geliştiricili projede gereksiz ikinci entegrasyon noktası. |
 | Coverage eşiği (%90 vb.) | Ölçülmeden konan yüzde kozmetik; testler risk alanlarına göre yazıldı. |
