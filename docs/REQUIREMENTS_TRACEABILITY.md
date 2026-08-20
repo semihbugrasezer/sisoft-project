@@ -39,7 +39,7 @@ Sütunların anlamı:
 | NFR-03 | Telegram Long Polling veya Webhook | `main.py` → `application.run_polling()` | Otomatik testle kapsanmıyor (bot API'sine gerçek bağlantı gerektirir); canlı Telegram koşularında doğrulandı — bkz. [VALIDATION.md](./VALIDATION.md) |
 | NFR-04 | Kilitlenmeyen asenkron mesajlaşma | `router.py` → `concurrent_updates(8)`, `handlers.py` → chat_id bazlı iki ayrı `asyncio.Lock` ailesi | `tests/test_router.py` (eşzamanlı update kabulü), `tests/test_handlers.py::test_same_chat_messages_are_processed_in_arrival_order` ve `::test_different_chats_are_not_serialized_against_each_other`; [CONCURRENCY.md](./CONCURRENCY.md); canlı koşu: batch sırasında bot yanıt vermeye devam etti |
 | NFR-05 | Ollama entegrasyonu | `infrastructure/llm/ollama_client.py` (`/api/chat`) | `tests/test_ollama_client.py`; canlı koşu #1-#7 |
-| NFR-06 | vLLM / LM Studio entegrasyonu | `infrastructure/llm/openai_compatible_client.py` (`/v1/chat/completions`) | `tests/test_openai_compatible_client.py`; LM Studio canlı doğrulandı, vLLM protokol uyumlu (donanım kısıtı, bkz. VALIDATION.md) |
+| NFR-06 | vLLM / LM Studio entegrasyonu | `infrastructure/llm/openai_compatible_client.py` (`/v1/chat/completions`) | `tests/test_openai_compatible_client.py`; **LM Studio + `gemma-4-e4b` ile uçtan uca canlı doğrulandı** (kriter çıkarımı + niyet + tam CV hattı — koşu #8, [VALIDATION.md](./VALIDATION.md)). vLLM aynı OpenAI-uyumlu kontratı paylaşır; donanım kısıtı nedeniyle ayrıca çalıştırılamadı. |
 
 ## Değerlendirme Kriterleri (PDF §Değerlendirme Kriterleri)
 

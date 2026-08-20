@@ -26,9 +26,10 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 | 2 | Yalnız batch (Türkçe-fix testi) | 463.5s | Cümle yapısı Türkçeleşti ama `"candıdate"` kelimesi kaldı — düz İngilizce bile değil, karışık alfabeli bozuk bir kelime. | Prompt'a "'candidate' yerine 'aday' de" talimatı eklendi (2. iterasyon). |
 | 3 | Yalnız batch (candidate-fix testi) | 476.7s | Regex ile otomatik ölçüldü (Kiril script + `\bcandidate\b`): üç adayda da `mixed_script=False`, `english_leak=False`. | **Temiz.** Örnek: *"Bu aday, React deneyimine sahip ve uzaktan çalışma uyumlu bir profesyoneldir..."* |
 | 4 | Rolling summary (ayrı koşu, aşağıda) | 84.0s (chat) | — | Rolling summary mekanizması doğrulandı. |
-| 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı; `openai_compatible` backend'i 7B+ sınıfı bir modelle kullanılmalı. |
+| 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı. **Bu teşhis daha sonra koşu #8'de doğrulandı:** aynı backend, 4B'lik bir modelle aynı adımı sorunsuz geçti. |
 | 6 | Gerçek (anonimleştirilmiş) bir CV, Türkçe aksanlı karakterler içeriyor (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanında harf yer değiştirmesi gözlendi (ör. "ğ" içeren bir isimde iki harf yer değiştirdi) — Türkçe aksanlı karakterlerde model kaynaklı bir hata. | Prompt zaten "candidateName alanına birebir aktar" talimatı içeriyor (`CV_EXTRACTOR_SYSTEM`) — bu bir prompt eksikliği değil, 7B modelin nadir/aksanlı token'larda ad kopyalarken yaptığı bir hallüsinasyon. Kayıtlı bilinen sınırlama; ölçülebilir tek bir örnekle prompt'u aşırı-uydurmak yerine belgelenmesi tercih edildi. |
 | 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
+| 8 | **LM Studio + `google/gemma-4-e4b` (4B), uçtan uca** — koşu #5'in açık bıraktığı boşluğu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama da başarılı (aşağıdaki tabloya bakın). Koşu #5'te 0.5B modelin başaramadığı yapılandırılmış JSON intent-classification burada sorunsuz çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Kalite farkı:** üç kriterlik girdiden yalnızca bir kriter çıkardı (`qwen2.5:7b` üçünü de çıkarıyor) — şema-uyumlu ve grounded, ama eksik. | Kod değişikliği gerekmedi. Koşu #5'teki "darboğaz model kapasitesiydi, kod değil" teşhisi doğrulandı; `openai_compatible` backend'inin kapasiteli bir modelle uçtan uca çalıştığı artık iddia değil, ölçüm. |
 
 > **Not (Koşu 1 hakkında güncelleme):** Yukarıdaki 1. koşuda gözlenen parafraz
 > kabulü ("React tecrübesi" → "React deneyimi") o tarihte kasıtlı bir tasarım
@@ -51,14 +52,45 @@ nesnesinin kısıtlı JSON şemasıdır:
   Diğer dokümanlarda tek bir rakam gerekiyorsa **~14 dakika** (en kötü/en
   güncel ölçüm) kullanılır.
 
-Bu, gerçek bir LM Studio sunucusuna karşı da canlı doğrulandı (mock değil):
-`OpenAICompatibleClient.structured_chat()` çağrıldı ve dönen JSON gerçekten
-doğrulanmış bir Pydantic nesnesine dönüştü, toplam 1.4 saniyede (protokol
-testi — küçük model, kalite testi değil). Ollama'nın kendi
-`/v1/chat/completions` ucunun ve vLLM'in aynı `response_format` sözleşmesini
-uyguladığı resmi dokümantasyonlarından doğrulandı (`ctx7`); vLLM ayrıca canlı
-test edilmedi — Apple Silicon GPU desteklemediği için bu ortamda
-çalıştırılamadı.
+## OpenAI-Uyumlu Backend (LM Studio) — Uçtan Uca Doğrulama
+
+`openai_compatible` backend'i iki ayrı seviyede doğrulandı.
+
+**Protokol seviyesi** (koşu #5 dönemi): `OpenAICompatibleClient.structured_chat()`
+gerçek bir LM Studio sunucusuna karşı çağrıldı, dönen JSON doğrulanmış bir
+Pydantic nesnesine dönüştü (1.4s). Bu yalnızca `response_format: json_schema`
+sözleşmesini test eder — model kalitesini değil.
+
+**Uygulama seviyesi** (koşu #8): `google/gemma-4-e4b` (4B, 34k context)
+yüklenip projenin **gerçek servisleri** üzerinden çalıştırıldı — mock yok,
+`CriteriaService` ve `CVAnalysisService` doğrudan çağrıldı:
+
+| Aşama | Sonuç | Süre |
+|---|---|---|
+| Kriter çıkarımı (`define_criteria`) | ✅ `['React tecrübesi']` — şema-uyumlu, grounded | 25.7s |
+| Sohbet niyeti (`define_if_requested`) | ✅ doğru sınıflandırma: `chat` (kriter üretmedi) | 3.9s |
+| Tam CV hattı (`analyze`) | ✅ `candidateName="Caner Bulut"`, skills `[React, TypeScript, Redux, Next.js, Jest]`, skor 90 | 115.1s |
+
+Üretilen değerlendirme: *"Adayın React ve modern frontend teknolojilerindeki
+deneyimi çok güçlüdür."* — temiz Türkçe, dil sızıntısı yok.
+
+**Bu koşunun asıl değeri:** koşu #5'te 0.5B modelin iki denemede de
+üretemediği yapılandırılmış JSON intent-classification, aynı kodla 4B modelde
+sorunsuz çalıştı. "Darboğaz model kapasitesiydi, kod değil" teşhisi böylece
+ölçümle doğrulanmış oldu.
+
+**Gözlenen kalite farkı (kod hatası değil):** gemma-4-e4b, üç kriterlik bir
+girdiden ("React tecrübesi, temiz kod yazımı, uzaktan çalışma uyumu")
+yalnızca birini çıkardı; `qwen2.5:7b` (Ollama) aynı girdiden üçünü de
+çıkarıyor. Çıktı şemaya uygun ve kullanıcı metnine grounded — yani sistem
+yanlış bir şey üretmedi, eksik üretti. Bu, aynı kodun farklı modellerde
+farklı çıkarım kalitesi verdiğinin somut kaydıdır ve model seçiminin bir
+mimari parametre olduğunu gösterir.
+
+**vLLM** ayrıca canlı test edilmedi — Apple Silicon GPU desteklemediği için bu
+ortamda çalıştırılamadı. Aynı `response_format` sözleşmesini uyguladığı resmi
+dokümantasyonundan doğrulandı (`ctx7`); LM Studio ile kanıtlanan uyumluluk
+aynı OpenAI-uyumlu kontratı paylaştığı için geçerlidir.
 
 ## Performans Darboğazı ve Optimizasyon Seçenekleri
 
@@ -130,6 +162,8 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
   kararı. PDF validation/extraction paraleldir; LLM extraction/evaluation
   tüm belgeler için tek bir toplu istektir (tek yerel model sunucusunu N ayrı
   istekle boğmamak için bilinçli tercih).
-- **Örnek modeller kalite değil protokol testi içindir** — `qwen2.5-0.5b-instruct`
-  (LM Studio) yalnızca `response_format`/JSON şema sözleşmesini test etmek
-  için kullanıldı; üretimde 7B+ sınıfı bir model önerilir.
+- **Model seçimi bir mimari parametredir** — `qwen2.5-0.5b-instruct` (0.5B)
+  yapılandırılmış JSON üretemedi (koşu #5); `google/gemma-4-e4b` (4B) üç
+  aşamayı da geçti ama üç kriterden birini çıkardı (koşu #8);
+  `qwen2.5:7b` üçünü de çıkarıyor. Aynı kod, farklı çıkarım kalitesi.
+  Üretimde 7B+ sınıfı bir model önerilir.
