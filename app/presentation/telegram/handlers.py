@@ -352,8 +352,13 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(
         f"{len(files)} CV işleniyor, botu bu sırada kullanmaya devam edebilirsin..."
     )
-    await _process_files(context, chat_id, files, criteria)
-    await container.repo.clear_pending_files(chat_id)
+    # finally: _process_files beklenmeyen (AppError olmayan) bir istisna fırlatırsa
+    # bile CV BLOB'ları SQLite'ta kalmasın — kişisel veri için cleanup best-effort
+    # değil garanti olmalı (bkz. README.md → Veri Saklama ve Güvenlik).
+    try:
+        await _process_files(context, chat_id, files, criteria)
+    finally:
+        await container.repo.clear_pending_files(chat_id)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
