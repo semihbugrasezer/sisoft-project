@@ -148,6 +148,27 @@ evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
 çalıştırır — bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Batch başına
 iki LLM çağrısı".
 
+## LLM Backend'leri
+
+Ödev üç motoru da destekler; ikisi tek adaptörle karşılanır:
+
+| Motor | Adaptör | Uç | Durum |
+|---|---|---|---|
+| Ollama | `OllamaClient` | `/api/chat` (Ollama'ya özgü) | `qwen2.5:7b` ile canlı doğrulandı |
+| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | `google/gemma-4-e4b` ile canlı doğrulandı |
+| vLLM | `OpenAICompatibleClient` | `/v1/chat/completions` | Aynı protokol; donanım kısıtı nedeniyle canlı test edilmedi |
+
+**"OpenAI-uyumlu" bir protokol adıdır, servis adı değil.** HTTP biçimini
+OpenAI'ın API'si popülerleştirdiği için bu adla anılır; LM Studio ve vLLM kendi
+sunucularını bu biçimde sunar. Proje OpenAI servisine bağlanmaz — `openai`
+paketi bağımlılık değildir ve istekler `LLM_BASE_URL`'in gösterdiği sunucuya
+(varsayılan: `localhost`) gider. Tek adaptörün iki motoru birden karşılamasının
+nedeni ikisinin de aynı protokolü paylaşmasıdır; ayrı `LMStudioClient` ve
+`VLLMClient` yazmak aynı kodu iki kez yazmak olurdu.
+
+Uzak bir uç yapılandırılırsa CV içeriği o sunucuya gönderilir — bkz.
+[SECURITY.md](../SECURITY.md).
+
 ## Eşzamanlılık
 
 Dört ayrı katman (Telegram update kabulü, sohbet başına kilit, bloklayan PDF
