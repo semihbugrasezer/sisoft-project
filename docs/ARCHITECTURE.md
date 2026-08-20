@@ -1,8 +1,41 @@
 # Mimari
 
-Katmanlı mimari, bağımlılıklar tek yönde akar. Bu doküman dosya haritasını,
-katman sorumluluklarını ve istek akışını ayrıntılı anlatır — hızlı bir görsel
-özet için [README.md](../README.md#mimari)'deki iki diyagrama da bakılabilir.
+**Pragmatik katmanlı mimari, LLM sağlayıcıları için port soyutlamasıyla.**
+
+Bu doküman dosya haritasını, katman sorumluluklarını, istek akışını ve hata
+yayılımını anlatır.
+
+## Gerçek Bağımlılık Yönü
+
+Terminolojide dürüst olmak gerekirse bu tam bir "Clean Architecture" değildir:
+`application` katmanı `SQLiteRepo`, PDF parser ve prompt modüllerini doğrudan
+import eder. Yalnızca **LLM erişimi** tam ports-and-adapters ile soyutlanmıştır.
+
+```
+Presentation (Telegram)
+      │
+      ▼
+Application ──────────────┐
+      │                   │
+      ▼                   ▼
+   Domain           Infrastructure
+  (saf mantık)            │
+      ▲                   ├── PDF (PyMuPDF)
+      │                   ├── SQLite
+      │                   └── LLM adaptörleri
+      │                            │
+      └──── LLMPort ◄───────────────┘
+           (arayüz domain'de,
+            implementasyon infrastructure'da)
+```
+
+Bu bilinçli bir tercihtir: `LLMPort` gerçek bir ihtiyaca dayanır — iki farklı
+implementasyon (`OllamaClient`, `OpenAICompatibleClient`) vardır ve ödev üç
+farklı LLM motorunu desteklemeyi şart koşar. Buna karşılık SQLite ve PDF
+parser için tek implementasyon vardır; onlara resmî bir arayüz eklemek bu
+ölçekte karşılıksız bir soyutlama olurdu. Testler yine de izoledir: Python'da
+duck typing sayesinde sahte (fake) nesneler ayrı bir soyut sınıf tanımlamadan
+kullanılabiliyor (bkz. `tests/test_criteria_service.py::FakeRepo`).
 
 ## Katmanlar ve Dosyalar
 
@@ -38,22 +71,55 @@ container.py                 Tüm bağımlılıkları tek yerde kurar (DI, frame
 main.py                      Entrypoint: config → container → polling
 ```
 
-## Neden Bu Ayrım
+## Katman Sorumlulukları
 
-`domain` hiçbir dış bağımlılık bilmez — `scoring.py` test edilirken ne LLM'e
-ne Telegram'a ihtiyaç var. LLM erişimi tam soyutlanmıştır: `application`
-yalnızca `LLMPort` arayüzüne bağımlıdır, somut `OllamaClient`'a değil —
-`infrastructure` bu arayüzü gerçek kütüphanelerle (httpx) uygular, testlerde
-taklit (fake) bir LLM nesnesiyle değiştirilir. `SQLiteRepo` ve PDF parser'ın
-ayrı bir arayüzü yoktur; `application` bunları doğrudan kullanır — Python'da
-duck typing sayesinde testler yine de sahte (fake) nesnelerle izole çalışır
-(bkz. `tests/test_criteria_service.py` içindeki `FakeRepo`), ayrı bir soyut
-sınıf tanımlamaya gerek kalmadan. Tek implementasyon olan bir bağımlılık için
-resmi bir arayüz eklemek bu projenin ölçeğinde karşılıksız bir soyutlama
-olurdu (bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md)).
-`presentation/telegram` yalnızca Telegram'a özgü I/O'yu bilir; iş mantığı
-burada asla yoktur — bir handler her zaman bir application servisini çağırır
-ve sonucu formatlar.
+| Katman | Bilir | Bilmez |
+|---|---|---|
+| `domain` | Pydantic şemaları, saf skorlama fonksiyonları, `LLMPort` arayüzü, hata hiyerarşisi | Hiçbir dış kütüphane — `scoring.py` test edilirken ne LLM ne Telegram gerekir |
+| `application` | Use-case orkestrasyonu, `domain` modelleri, `LLMPort` | Hangi LLM backend'inin çalıştığını (`OllamaClient` mı `OpenAICompatibleClient` mı) |
+| `infrastructure` | httpx, PyMuPDF, sqlite3 — gerçek dış dünya | İş mantığını |
+| `presentation/telegram` | Telegram'a özgü I/O, komut yönlendirme, formatlama | İş mantığını — handler her zaman bir application servisini çağırır ve sonucu formatlar |
+
+`container.py` bağımlılıkları tek yerde kurar; framework kullanılmaz, basit
+constructor injection yeterlidir.
+
+## Hata Yayılımı
+
+Tüm domain hataları tek bir kökten (`AppError`) türer ve her biri kullanıcıya
+gösterilebilir bir `user_message` taşır. Bu, "sessiz yutma yok, teknik
+istisna kullanıcıya sızmaz" kuralını mimari seviyede uygular.
+
+```
+Telegram Update
+      │
+      ▼
+handlers.py  ──────────────────────────────┐
+      │                                     │
+      ▼                                     │
+Application / Infrastructure                │
+      │                                     │
+      ├── PDFValidationError                │
+      │     "PDF şifreli; şifresiz kopya…"  │
+      ├── LLMUnavailableError               │  except AppError:
+      │     "Model şu anda yanıt vermiyor…" │    reply(exc.user_message)
+      ├── LLMOutputValidationError          │
+      │     (tek retry sonrası)             │
+      └── NoCriteriaDefinedError            │
+            "Önce kriter tanımlamalısınız…" │
+                                            │
+      Beklenmeyen istisna ─────────────────┘
+            │
+            ▼
+      error_handler (global)
+      logger.exception(...) + genel kullanıcı mesajı
+```
+
+İki nokta özellikle önemli:
+
+- **Batch'te fail-fast:** bir dosya bile geçersizse hiçbir dosya LLM'e
+  gönderilmez; kısmi sonuç yerine net bir hata döner.
+- **Garantili temizlik:** `/analyze` beklenmeyen bir istisna alsa bile
+  bekleyen CV verisi `try/finally` ile silinir (bkz. [SECURITY.md](../SECURITY.md)).
 
 ## İstek Akışı (Tekli CV Analizi)
 
@@ -83,11 +149,23 @@ iki LLM çağrısı".
 
 ## Eşzamanlılık
 
-- Telegram tarafı: `Application.concurrent_updates(8)` — birden fazla sohbet
-  eşzamanlı işlenebilir; `handlers.py` her `chat_id` için ayrı bir
-  `asyncio.Lock` kullanır (aynı sohbette sıralı, farklı sohbetlerde paralel).
-- LLM tarafı: `LLM_MAX_CONCURRENCY` (varsayılan 3) tek yerel model
-  sunucusuna aynı anda giden istek sayısını sınırlayan bir semafordur —
-  Telegram'ın 8 eşzamanlı update kabul etmesinden bağımsızdır.
-- PDF tarafı: bloklayan `PyMuPDF` çağrıları `asyncio.to_thread` ile event
-  loop dışına atılır.
+Dört ayrı katman (Telegram update kabulü, sohbet başına kilit, bloklayan PDF
+işi, LLM istek limiti) ayrı bir dokümanda ayrıntılı anlatılıyor:
+**[CONCURRENCY.md](./CONCURRENCY.md)**.
+
+Özet:
+
+- `Application.concurrent_updates(8)` — birden fazla sohbet eşzamanlı işlenir.
+- `chat_id` bazlı `asyncio.Lock` — aynı sohbette sıralı, farklı sohbetlerde paralel.
+- `asyncio.to_thread` — bloklayan PyMuPDF/sqlite3 çağrıları event loop dışında.
+- `asyncio.Semaphore(LLM_MAX_CONCURRENCY)` — tek model sunucusuna giden istek limiti.
+
+## Bilinen Mimari Kısıtlar
+
+- **Tek instance varsayımı** — SQLite ve bellek içi kilitler/albüm tamponu tek
+  process varsayar; yatay ölçekleme için paylaşılan bir state store gerekir.
+- **Batch LLM aşaması CV başına paralel değil** — bilinçli tercih, gerekçesi
+  [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
+- **20.000 karakter extraction sınırı** — çok uzun CV'ler kırpılır; kullanıcı
+  uyarılır.
+- **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md).

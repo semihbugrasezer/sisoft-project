@@ -1,13 +1,17 @@
-# Yapay Zeka Destekli Dinamik Telegram İK ve Sohbet Botu
+# Yapay Zeka Destekli Telegram İK ve Sohbet Botu
 
 [![CI](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml/badge.svg)](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml)
-Python · python-telegram-bot · Ollama / LM Studio / vLLM · Pydantic · PyMuPDF · SQLite
+![Python](https://img.shields.io/badge/Python-3.13%20%7C%203.14-blue)
+![Status](https://img.shields.io/badge/status-development-orange)
 
-Kullanıcılarla günlük konularda bağlamı koruyarak sohbet eden, aynı zamanda
-konuşma içinde tanımlanan **dinamik kriterlere** göre yüklenen CV'leri analiz
-eden bir Telegram botu. Backend Python ile yazılmıştır; katmanlı bir mimariye
-(`domain / application / infrastructure / presentation`) sahiptir ve arka
-planda **Ollama**, **LM Studio** veya **vLLM**'den herhangi biriyle çalışabilir.
+Bağlamı koruyan günlük sohbet ile LLM destekli CV değerlendirmesini tek
+Telegram arayüzünde birleştiren asenkron bir bot.
+
+Kullanıcı değerlendirme kriterlerini doğal dille tanımlar. Yüklenen CV'ler
+doğrulanır, ortak bir `CandidateProfile` şemasına normalize edilir ve
+yalnızca bu kullanıcı tanımlı kriterlere göre değerlendirilir — **ham PDF
+hiçbir zaman doğrudan skorlanmaz.** Arka planda Ollama, LM Studio veya vLLM
+çalışabilir.
 
 ## Demo
 
@@ -18,111 +22,51 @@ canlı çalıştırılan 5 CV'lik toplu analiz — top-3 JSON çıktısı, ödev
 <img src="docs/images/demo-batch-json-1.png" alt="Telegram'da 5 CV albüm gönderimi ve top-3 JSON çıktısının başlangıcı" width="480">
 <img src="docs/images/demo-batch-json-2.png" alt="Top-3 JSON çıktısının devamı — rank, dynamicScores, averageScore, hrEvaluation" width="480">
 
-## Özellikler
+## Yetenekler
 
-- **Genel sohbet** — bağlamı (chat history) koruyan, backend'de güvenli
-  şekilde yönetilen sohbet akışı.
-- **Dinamik kriter tanımlama** — sabit bir kriter listesi yok; kullanıcı
-  puanlama kriterlerini serbest metinle tanımlar ("React tecrübesi ve temiz
-  kod yazımına göre skorla").
-- **Tekli CV analizi** — tek bir CV yüklendiğinde, tanımlı kriterlere göre
-  güçlü/zayıf yönler ve gelişim tavsiyeleri içeren okunaklı bir Markdown
-  rapor üretir.
-- **PDF doğrulama** — bozuk, şifreli, okunamaz veya geçersiz PDF'leri
-  backend'de yakalar, kullanıcıya net bir hata mesajıyla döner.
-- **LLM Extraction** — ham PDF metni doğrudan skorlanmaz; önce ortak bir
-  JSON şemasına (yetenekler, iş deneyimi, eğitim, diller) çevrilir. Tüm
-  puanlama ve analiz bu şema üzerinden yürür.
-- **Çoklu CV skorlama** — en fazla 5 CV kabul edilir. PDF doğrulama ve metin
-  çıkarma `asyncio.gather` ile paralel çalışır; LLM extraction ve
-  değerlendirme, tek yerel model sunucusunu N ayrı istekle boğmamak için
-  belge başına değil, tüm belgeler için tek bir toplu (batched) yapılandırılmış
-  istek olarak yürütülür. Ortalama backend'de deterministik hesaplanır, en
-  yüksek 3 aday yapılandırılmış bir JSON çıktısı olarak döner.
-- **Kilitlenmeyen asenkron altyapı** — Telegram Long Polling üzerinden
-  çalışır; çoklu CV işlenirken bot diğer sohbetlere yanıt vermeye devam eder.
-
-## Ödev Gereksinim Karşılama
-
-| Gereksinim | Karşılık |
+| Yetenek | Uygulama |
 |---|---|
-| Genel sohbet, bağlam korunması | `ChatService` + SQLite (sıcak pencere + rolling summary) |
-| Serbest metinden dinamik kriter | `CriteriaService`, yapılandırılmış LLM çıktısı |
-| Tekli CV detaylı analiz (strengths/weaknesses/recommendations) | `CVAnalysisService` → `EvaluationResult` → Markdown rapor |
-| PDF doğrulama (bozuk/şifreli/okunamaz) | `pymupdf_parser.py`, sırayla doğrulanan 6 senaryo (boş/imza/açılamayan/şifreli/sayfasız/metinsiz), tek `PDFValidationError` |
-| LLM Extraction → ortak JSON şeması | `CandidateProfile` (`extra="forbid"`) |
-| Skorlama/filtreleme yalnızca ortak JSON üzerinden | evaluator prompt'u yalnızca `profile.model_dump_json()` alır |
-| En fazla 5 CV, asenkron/paralel işleme | `MAX_CV_COUNT=5`, PDF validation `asyncio.gather` ile paralel |
-| Top-3 JSON (beklenen şema) | `MultiAnalysisResponse`, ödev PDF §4 ile birebir |
-| Telegram, kilitlenmeyen asenkron mesajlaşma | `python-telegram-bot`, `concurrent_updates(8)` |
-| Ollama / vLLM / LM Studio entegrasyonu | `LLMPort` arayüzü, `LLM_BACKEND` ile seçilir |
-| Katmanlı mimari | `domain / application / infrastructure / presentation` |
+| Bağlamı koruyan sohbet | Sıcak pencere (40 mesaj) + rolling summary |
+| Dinamik kriter tanımlama | Yapılandırılmış LLM çıkarımı, komut gerekmez |
+| PDF doğrulama | Bozuk / şifreli / okunamaz / geçersiz belge reddi |
+| CV normalizasyonu | LLM Extraction → `CandidateProfile` (Pydantic) |
+| Tekli CV analizi | Kriter skorları + güçlü/zayıf yönler + tavsiyeler |
+| Çoklu CV sıralama | En fazla 5 CV → deterministik top-3 JSON |
+| Kilitlenmeyen altyapı | Batch işlenirken bot yanıt vermeye devam eder |
+| LLM backend'leri | Ollama, LM Studio, vLLM (`LLMPort` arayüzü) |
 
 ## Mimari
 
-```
-presentation/telegram/  → Telegram I/O: komutlar, mesaj işleme, formatlama
-application/             → use-case servisleri: sohbet, kriter, CV analizi, batch
-domain/                  → Pydantic şemaları ve saf iş mantığı (skorlama)
-infrastructure/          → LLM istemcileri (Ollama/OpenAI-uyumlu), PDF parser, SQLite
-```
-
-Bağımlılıklar tek yönde akar: `presentation → application → domain`.
-Pragmatik bir katmanlı mimari: `domain` framework'ten tamamen bağımsızdır.
-LLM erişimi tam ports-and-adapters ile soyutlanmıştır — `application` yalnızca
-`LLMPort` arayüzüne bağımlıdır, `OllamaClient`/`OpenAICompatibleClient`
-`infrastructure`'da değiştirilebilir (bkz. Teknoloji). Persistence (`SQLiteRepo`)
-ve PDF parser ise `application` tarafından doğrudan kullanılır — bu projenin
-ölçeğinde ayrı bir arayüz eklemek karşılıksız bir soyutlama olurdu; tek
-implementasyon var ve test edilirken sahte (fake) nesnelerle kolayca
-değiştiriliyor. `container.py` bağımlılıkları tek yerde kurar (framework yok,
-basit constructor injection).
-
 ```mermaid
 flowchart LR
-    U[Telegram Kullanıcı] --> H[Telegram Handlers]
-    H --> CS[Chat Service]
-    H --> CRS[Criteria Service]
-    H --> BS[Batch Analysis Service]
-    BS --> CVS[CV Analysis Service]
-
-    CS --> DB[(SQLite)]
-    CRS --> DB
-
-    CRS --> LLM[LLM Port]
-    CVS --> PDF[PDF Validator]
-    CVS --> LLM
-
+    TG[Telegram] --> P[Presentation]
+    P --> A[Application Services]
+    A --> D["Domain<br/>(şemalar + skorlama)"]
+    A --> PDF[PDF Validation]
+    A --> DB[(SQLite)]
+    A --> LLM[LLM Port]
     LLM --> O[Ollama]
-    LLM --> OC[OpenAI-uyumlu uç]
-    OC --> V[LM Studio / vLLM]
+    LLM --> C[OpenAI-uyumlu uç]
+    C --> LS[LM Studio / vLLM]
 ```
 
-CV analiz hattı (tekli ve çoklu ortak): ham PDF **hiçbir zaman** doğrudan
-skorlanmaz, önce ortak şemaya çevrilir.
+Pragmatik katmanlı mimari; LLM sağlayıcıları port/adapter ile soyutlanmıştır.
+Ayrıntı, hata yayılımı ve istek akışı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
-```mermaid
-flowchart TD
-    A[PDF] --> B[Doğrulama]
-    B --> C[Metin çıkarma]
-    C --> D[LLM Extraction]
-    D --> E[CandidateProfile JSON]
-    E --> F{Tekli mi çoklu mu?}
-    F -->|Tekli| G[Nitel değerlendirme]
-    F -->|Çoklu| H[Kriter bazlı skorlama]
-    G --> I[Markdown rapor]
-    H --> J[Backend'de ortalama + top-3]
-    J --> K[JSON çıktı]
+## İşlem Hattı
+
+```
+PDF → Doğrulama → Metin çıkarma → LLM Extraction → CandidateProfile JSON
+                                                          ↓
+                                                    Değerlendirme
+                                                    ↙          ↘
+                                          Markdown rapor    Backend'de
+                                             (tekli)      ortalama + top-3
+                                                            (çoklu JSON)
 ```
 
-## Teknoloji
-
-- **Python**, `python-telegram-bot` (async, Long Polling)
-- **Ollama** (varsayılan) veya **OpenAI-uyumlu** `/v1/chat/completions` ucu
-  üzerinden LM Studio / vLLM — `LLM_BACKEND` ile seçilir
-- **PyMuPDF** — PDF doğrulama ve metin çıkarma
-- **Pydantic** — LLM çıktılarının zorlandığı şemalar
-- **SQLite** — sohbet geçmişi ve kriter kalıcılığı
+Aritmetik ortalama ve sıralama LLM'e değil backend'e aittir
+(`app/domain/scoring.py`). Ayrıntı: **[docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md)**.
 
 ## Kurulum
 
@@ -131,131 +75,86 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env
-# .env içine TELEGRAM_BOT_TOKEN'ı ekleyin (BotFather'dan alınır)
-
-ollama pull qwen2.5:7b   # ilk kurulumda bir kere
+cp .env.example .env        # TELEGRAM_BOT_TOKEN ekleyin (BotFather'dan)
+ollama pull qwen2.5:7b      # ilk kurulumda bir kere
 ```
 
-Çalıştırmadan önce Ollama'nın ayakta olması gerekir (`ollama serve`).
+Ollama'nın ayakta olması gerekir (`ollama serve`), sonra:
 
 ```bash
 python main.py
 ```
 
-## Yapılandırma
+### Yapılandırma
 
-`.env` dosyasındaki başlıca değişkenler:
+| Değişken | Varsayılan | Açıklama |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | — | BotFather'dan alınan token (zorunlu) |
+| `LLM_BACKEND` | `ollama` | `ollama` veya `openai_compatible` |
+| `LLM_BASE_URL` | `http://localhost:11434` | LLM sunucu adresi |
+| `LLM_MODEL` | `qwen2.5:7b` | Kullanılacak model |
+| `LLM_MAX_CONCURRENCY` | `3` | Sunucuya aynı anda giden istek limiti |
+| `LLM_TIMEOUT` | `1200` | Tek LLM isteği için üst sınır (saniye) |
 
-| Değişken | Açıklama |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | BotFather'dan alınan token |
-| `LLM_BACKEND` | `ollama` (varsayılan) veya `openai_compatible` |
-| `LLM_BASE_URL` | LLM sunucu adresi (Ollama, LM Studio veya vLLM) |
-| `LLM_MODEL` | Kullanılacak model adı |
-| `LLM_MAX_CONCURRENCY` | Sunucuya aynı anda gidebilecek istek sayısı |
-
-`LLM_BACKEND=openai_compatible` ayarlandığında bot, Ollama'nın kendi
-`/api/chat` ucu yerine `/v1/chat/completions` üzerinden LM Studio veya vLLM
-ile konuşur — `LLM_BASE_URL`/`LLM_MODEL` değişmez, yalnızca farklı bir
+`LLM_BACKEND=openai_compatible` seçilirse bot `/v1/chat/completions` üzerinden
+LM Studio veya vLLM ile konuşur; `LLM_BASE_URL`/`LLM_MODEL` yalnızca farklı bir
 sunucuya işaret eder. Application servisleri hangi backend'in çalıştığını
-bilmez; ikisi de aynı `LLMPort` arayüzünü uygular (`app/domain/ports.py`).
+bilmez.
 
 ## Kullanım
 
 1. `/start` — komutları listeler.
-2. Serbest metinle kriter tanımla: *"CV'leri React tecrübesi, temiz kod ve
-   uzaktan çalışma uyumuna göre değerlendir."*
-3. Tek bir CV gönder → detaylı Markdown analiz raporu.
-4. 2-5 CV'yi albüm olarak birlikte gönder → otomatik top-3 JSON çıktısı.
+2. Kriterleri serbest metinle tanımla:
+   *"CV'leri React tecrübesi, temiz kod ve uzaktan çalışma uyumuna göre değerlendir."*
+3. Tek CV gönder → detaylı Markdown analiz raporu.
+4. 2-5 CV'yi albüm olarak birlikte gönder → otomatik top-3 JSON.
    (Tek tek göndermek için `/batch` → PDF'ler → `/analyze`.)
 5. `/criteria_show`, `/cancel`, `/reset` — yardımcı komutlar.
 
 ## Çıktı Formatı
 
-**Tekli CV:** kriter bazlı skorlar, güçlü yönler, zayıf yönler, gelişim
-tavsiyeleri ve genel değerlendirme içeren Markdown rapor.
+**Tekli CV:** kriter skorları, güçlü yönler, zayıf yönler, gelişim tavsiyeleri
+ve genel değerlendirme içeren Markdown rapor.
 
-**Çoklu CV (top-3):**
-
-```json
-{
-  "status": "success",
-  "processedCVCount": 5,
-  "userDefinedCriteria": ["React tecrübesi", "Uzaktan çalışma uyumu", "Clean Code"],
-  "topCandidates": [
-    {
-      "rank": 1,
-      "candidateName": "Caner Bulut",
-      "pdfFileName": "cv_caner_bulut.pdf",
-      "dynamicScores": {"React tecrübesi": 95, "Uzaktan çalışma uyumu": 85, "Clean Code": 90},
-      "averageScore": 90.0,
-      "hrEvaluation": "Aday, tanımlanan dinamik kriterlerin tamamına üst düzey uyum sağlamaktadır."
-    }
-  ]
-}
-```
+**Çoklu CV:** ödev PDF §4 şemasıyla birebir top-3 JSON — `status`,
+`processedCVCount`, `userDefinedCriteria`, `topCandidates[]` (`rank`,
+`candidateName`, `pdfFileName`, `dynamicScores`, `averageScore`,
+`hrEvaluation`). Şema `extra="forbid"` ile kilitlidir. Gerçek çıktı örneği
+için yukarıdaki demo görsellerine bakın.
 
 ## Test
 
 ```bash
-pip install -r requirements-dev.txt   # pytest, ruff, mypy — çalışma zamanı için gerekmez
-python -m pytest tests/ -v
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
 ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-Ortalama hesaplama, top-3 sıralama, PDF doğrulama, kriter çıkarımı, sohbet
-bağlamı ve Telegram handler'ları için 80 birim/entegrasyon testi içerir.
-Ayrıca gerçek yerel model sunuculara (Ollama, LM Studio) karşı canlı testlerle
-doğrulandı — bkz. [docs/VALIDATION.md](docs/VALIDATION.md).
+80 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
+**[docs/VALIDATION.md](docs/VALIDATION.md)**.
 
-Test verisi üretimi:
+## Dokümantasyon
 
-```bash
-python scripts/generate_mock_cvs.py      # mock_cvs/ altına 5 geçerli örnek CV
-python scripts/generate_invalid_cvs.py   # mock_cvs/invalid/ altına 4 geçersiz PDF
-                                          # (bozuk, şifreli, taranmış, PDF olmayan)
-```
+| Doküman | İçerik |
+|---|---|
+| [Gereksinim İzlenebilirliği](docs/REQUIREMENTS_TRACEABILITY.md) | Ödev maddesi → kod → test eşlemesi |
+| [Mimari](docs/ARCHITECTURE.md) | Katmanlar, bağımlılık yönü, istek akışı, hata yayılımı |
+| [LLM Hattı](docs/LLM_PIPELINE.md) | Prompt sorumlulukları, yapılandırılmış çıktı, prompt injection |
+| [Eşzamanlılık](docs/CONCURRENCY.md) | Async model, kilitleme stratejisi, batch davranışı |
+| [Test Stratejisi](docs/TESTING.md) | Neyin taklit edildiği, regresyon testleri, CI |
+| [Canlı Doğrulama](docs/VALIDATION.md) | Gerçek model ve Telegram koşuları, ölçümler |
+| [Tasarım Kararları](docs/DESIGN_DECISIONS.md) | Trade-off'lar ve gerekçeleri |
+| [AI Destekli Geliştirme](docs/AI_ASSISTED_DEVELOPMENT.md) | Süreç, insan denetim noktaları, yakalanan hatalar |
+| [Güvenlik](SECURITY.md) | Tehdit modeli, veri yaşam döngüsü, üretim öncesi gerekenler |
+| [Katkı Rehberi](CONTRIBUTING.md) | Branch/PR politikası, kalite kontrolleri |
 
 ## Bilinen Sınırlamalar
 
-- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda
-  ~8-10 dakika sürer; darboğaz model/donanımdır, mimari değil.
-- **OCR yok** — taranmış/görsel-yalnızca PDF'ler reddedilir, OCR ile işlenmez.
-- **Batch'te CV başına paralel LLM isteği yok** — PDF validation paraleldir,
-  LLM extraction/evaluation tüm belgeler için tek bir toplu istektir (bilinçli
-  tercih, bkz. [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)).
-- **20.000 karakter extraction sınırı** — çok uzun CV'ler bu sınıra kırpılır;
-  kullanıcı Telegram'da bir uyarı mesajıyla bilgilendirilir.
-
-## Veri Saklama ve Güvenlik
-
-Sohbet geçmişi, özetler ve kriterler SQLite'ta düz metin olarak tutulur.
-`/batch` akışıyla yüklenen CV'ler işlenene kadar geçici olarak SQLite'a
-yazılır; analiz başarılı da olsa hata da verse `/analyze` içindeki
-`try/finally` bloğu bunları her durumda siler (albüm/tekli yükleme hiç
-diske yazılmaz, doğrudan bellekte işlenir). Bu bir demo/mülakat projesidir:
-**encryption-at-rest yoktur**; gerçek İK verisiyle üretimde kullanılmadan
-önce uygun bir veri saklama ve şifreleme politikası eklenmelidir.
-
-## Branch ve PR Politikası
-
-`main` korunan branch'tir (CI + 1 onay zorunlu). Kalıcı bir `development`
-branch kullanılmaz — her değişiklik kısa ömürlü bir branch'te geliştirilir
-(`feat/*`, `fix/*`, `docs/*`, `chore/*`), PR ile `main`e açılır ve
-onaylandığında GitHub'ın native auto-merge özelliğiyle squash-merge edilir:
-
-```bash
-git switch -c fix/example
-# değişiklik, test, commit
-git push -u origin fix/example
-gh pr create --base main
-gh pr merge --auto --squash   # onay + CI tamamlanınca otomatik merge olur
-```
-
-## Detaylı Dokümantasyon
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — dosya haritası, istek akışı, eşzamanlılık
-- [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) — mimari kararlar ve gerekçeleri
-- [docs/VALIDATION.md](docs/VALIDATION.md) — gerçek model sunucularına karşı canlı doğrulama sonuçları
+- **Yerel model gecikmesi** — 5 CV'lik batch bu donanımda ~14 dakika sürer;
+  darboğaz model/donanım, mimari değil.
+- **OCR yok** — taranmış/görsel-yalnızca PDF'ler işlenmez, net hatayla reddedilir.
+- **20.000 karakter sınırı** — çok uzun CV'ler kırpılır, kullanıcı uyarılır.
+- **Demo kapsamı** — encryption-at-rest ve otomatik veri saklama politikası
+  yoktur; gerçek İK verisiyle üretimde kullanılmadan önce bkz. [SECURITY.md](SECURITY.md).
