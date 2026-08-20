@@ -56,36 +56,35 @@ def test_keeps_short_or_symbolic_exact_criterion():
     assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
 
 
-class FakeLLMParaphraseThenExact:
-    """İlk çağrıda kullanıcının kelimesini parafraz eder (grounded ama birebir değil),
-    düzeltme turunda birebir kopyalar."""
+class FakeLLMParaphrasedLabel:
+    """Model kullanıcının ifadesini hafifçe yeniden yazar: "React tecrübesi" ->
+    "React deneyimi". Anlam korunur ve etiket kullanıcının kelimesine dayanır."""
 
     def __init__(self):
         self.calls = 0
 
     async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
         self.calls += 1
-        label = "React deneyimi" if self.calls == 1 else "React tecrübesi"
         return CriteriaExtractionResult(
-            criteria=[Criterion(id="react", label=label, description="x")]
+            criteria=[Criterion(id="react", label="React deneyimi", description="x")]
         )
 
 
 @pytest.mark.asyncio
-async def test_paraphrased_but_grounded_label_triggers_verbatim_retry():
-    # Ödev PDF'indeki örnek JSON kullanıcının kendi ifadesinin birebir yansımasını
-    # bekliyor ("React tecrübesi" girilirse çıktıda da "React tecrübesi" olmalı).
-    # İlk çağrı "React deneyimi" gibi anlamca doğru ama birebir olmayan bir label
-    # üretirse (kelime-örtüşmesiyle zaten "grounded" sayılır) yine de bir düzeltme
-    # turu tetiklenmeli.
-    llm = FakeLLMParaphraseThenExact()
-    repo = FakeRepo()
-    criteria = await CriteriaService(llm, repo).define_criteria(
+async def test_semantically_grounded_paraphrase_is_accepted():
+    # Regresyon: bir dönem birebir-etiket zorunluluğu vardı ve parafrazı reddedip
+    # fazladan bir düzeltme turu tetikliyordu. Bu kısıt ödev PDF'inden gelmiyor —
+    # PDF'in kendi JSON örneği userDefinedCriteria içinde "Clean Code" gösteriyor,
+    # oysa düz metin örneğinde kullanıcı "temiz kod yazımı" yazıyor. Gereken
+    # kriterin kullanıcının söylediğine DAYANMASI (grounded olması); kelimesi
+    # kelimesine aynı olması değil.
+    llm = FakeLLMParaphrasedLabel()
+    criteria = await CriteriaService(llm, FakeRepo()).define_criteria(
         1, "React tecrübesine göre değerlendir"
     )
 
-    assert llm.calls == 2
-    assert criteria[0].label == "React tecrübesi"
+    assert llm.calls == 1, "parafraz için gereksiz düzeltme turu tetiklendi"
+    assert criteria[0].label == "React deneyimi"
 
 
 def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
@@ -244,9 +243,9 @@ async def test_intent_failure_on_both_models_raises_explicit_error():
     assert llm.calls == 2, "ana model denenmeden hata dönüldü"
 
 
-class FakeIntentParaphrasesThenExact:
-    """Intent çağrısı grounded ama PARAFRAZ etiket döner; define_criteria'nın
-    düzeltme turu birebir kopyayı verir."""
+class FakeIntentUngroundedThenGrounded:
+    """Intent çağrısı kullanıcının hiç bahsetmediği bir kriter uydurur;
+    define_criteria düzeltme turu gerçek kriteri verir."""
 
     def __init__(self):
         self.calls = 0
@@ -256,22 +255,22 @@ class FakeIntentParaphrasesThenExact:
         if response_model is CriteriaIntentResult:
             return CriteriaIntentResult(
                 intent="criteria",
-                criteria=[Criterion(id="react", label="React deneyimi", description="x")],
+                criteria=[Criterion(id="pm", label="Proje yönetimi", description="x")],
             )
-        label = "React deneyimi" if self.calls == 2 else "React tecrübesi"
         return CriteriaExtractionResult(
-            criteria=[Criterion(id="react", label=label, description="x")]
+            criteria=[Criterion(id="react", label="React tecrübesi", description="x")]
         )
 
 
 @pytest.mark.asyncio
-async def test_natural_language_path_also_enforces_verbatim_labels():
-    # Regresyon: birebir-etiket düzeltmesi yalnız /criteria yolunda çalışıyordu.
-    # Komutsuz (asıl) akış parafraz edilmiş etiketi doğrudan kaydediyordu.
-    llm = FakeIntentParaphrasesThenExact()
+async def test_natural_language_path_shares_grounding_correction():
+    # Doğal dil akışı ile /criteria akışı AYNI doğrulamadan geçmeli: intent çağrısı
+    # kullanıcı metnine dayanmayan bir kriter üretirse düzeltme turu (define_criteria
+    # içinde) devreye girmeli, uydurma kriter kaydedilmemeli.
+    llm = FakeIntentUngroundedThenGrounded()
     criteria = await CriteriaService(llm, FakeRepo()).define_if_requested(
         1, "React tecrübesine göre değerlendir"
     )
 
     assert criteria is not None
-    assert criteria[0].label == "React tecrübesi", "parafraz etiket düzeltilmeden kaydedildi"
+    assert criteria[0].label == "React tecrübesi"

@@ -32,14 +32,14 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 | 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
 | 8 | **LM Studio + `google/gemma-4-e4b` (4B), uçtan uca** — koşu #5'in açık bıraktığı boşluğu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama da başarılı (aşağıdaki tabloya bakın). Koşu #5'te 0.5B modelin başaramadığı yapılandırılmış JSON intent-classification burada sorunsuz çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Kalite farkı:** üç kriterlik girdiden yalnızca bir kriter çıkardı (`qwen2.5:7b` üçünü de çıkarıyor) — şema-uyumlu ve grounded, ama eksik. | Kod değişikliği gerekmedi. Koşu #5'teki "darboğaz model kapasitesiydi, kod değil" teşhisi doğrulandı; `openai_compatible` backend'inin kapasiteli bir modelle uçtan uca çalıştığı artık iddia değil, ölçüm. |
 
-> **Not (Koşu 1 hakkında güncelleme):** Yukarıdaki 1. koşuda gözlenen parafraz
-> kabulü ("React tecrübesi" → "React deneyimi") o tarihte kasıtlı bir tasarım
-> tercihiydi. Daha sonra ödev PDF'indeki örnek JSON'un kullanıcının ifadesini
-> birebir yansıtmasını beklediği netleşince `CriteriaService.define_criteria`
-> bir düzeltme turu daha ekleyecek şekilde sıkılaştırıldı (bkz.
-> `_all_labels_exact`, [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md)) — artık
-> parafraz edilmiş ama grounded bir label tek turda kabul edilmiyor, önce
-> birebir kopya için bir şans daha veriliyor.
+> **Not (Koşu 1 hakkında güncelleme):** 1. koşuda gözlenen parafraz kabulü
+> ("React tecrübesi" → "React deneyimi") kasıtlı bir tasarım tercihiydi. Bir ara
+> "PDF birebir etiket bekliyor" yorumuyla birebir zorunluluğu eklendi; **bu
+> yorum yanlıştı ve geri alındı** — PDF'in kendi JSON örneği
+> `userDefinedCriteria` içinde `"Clean Code"` gösterirken düz metin örneğinde
+> kullanıcı "temiz kod yazımı" yazıyor, yani birebir kopya bir sözleşme değil.
+> Bugünkü davranış: kriter kullanıcının metnine **grounded** olmalı (uydurma
+> reddedilir), ama parafraz kabul edilir.
 
 Girdi metni toplamda yalnızca ~834 token (5 mock CV, ilk üç koşu). Ölçülen süre
 CV boyutundan gelmez; kaynağı 5 iç içe `CandidateProfile`/`evaluation`

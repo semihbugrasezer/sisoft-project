@@ -70,7 +70,7 @@ Hepsi kök nedene kadar izlendi, düzeltildi ve regresyon testiyle korundu:
 | Telegram Markdown parse hatası — kullanıcı raporu hiç göremiyordu | Gerçek Telegram testi | `BadRequest`'te düz metne düşen fallback + regresyon testi |
 | Pending CV'ler istisna durumunda SQLite'ta kalıyordu | Kod incelemesi | `try/finally` ile garantili temizlik |
 | Tam-sınır durumunda `truncated` yanlış `False` dönüyordu | Kod incelemesi | Parser'ın sayfa sayısına bakması + regresyon testi |
-| Kriter etiketi parafraz ediliyordu (ödev birebir bekliyor) | PDF örnek JSON'u ile karşılaştırma | `_all_labels_exact` + düzeltme turu |
+| Kriter etiketinde birebir zorunluluğu eklenmişti — **PDF'de olmayan bir kısıt** | PDF'in kendi JSON örneğinin `"Clean Code"` içermesi (düz metin örneği ise `"temiz kod yazımı"` diyor) | Kısıt kaldırıldı; yalnızca grounding (uydurma kriter reddi) korundu |
 | Anahtar-kelime kısayolu kriter algılamayı bozdu | **Mevcut test paketi anında kırdı** | Yaklaşım geri alındı; yerine opsiyonel `LLM_INTENT_MODEL` |
 | 5 CV batch `LLM_TIMEOUT=600`'ü aşıyordu | Canlı koşu #7 | Varsayılan 1200s'ye yükseltildi |
 | Dokümantasyon iddiası koddan fazlaydı ("infrastructure arayüzleri uygular") | Bağımsız inceleme | Doküman gerçek duruma göre düzeltildi — karşılıksız soyutlama **eklenmedi** |

@@ -132,10 +132,18 @@ mi). Kriter tespit edilirse `Criterion[]` çıkarılır ve SQLite'a yazılır.
 
 Çıkarılan etiketler kullanıcının metnine **grounded** olmak zorundadır
 (`_grounded_criteria`): modelin kullanıcının hiç bahsetmediği bir kriter
-uydurması engellenir. Ayrıca etiketlerden biri kullanıcının ifadesinin birebir
-kopyası değilse (parafraz) bir düzeltme turu daha çalışır
-(`_all_labels_exact`) — ödev PDF'indeki örnek JSON kullanıcının kendi
-ifadesinin yansıtılmasını bekliyor.
+uydurması engellenir. Hiçbir kriter grounded değilse bir düzeltme turu çalışır.
+
+Etiketin kullanıcının ifadesiyle **birebir aynı olması gerekmez** — parafraz
+kabul edilir ("React tecrübesi" → "React deneyimi"). Bir dönem birebir
+zorunluluğu vardı; ödev PDF'i bunu istemiyor: kendi JSON örneğinde
+`userDefinedCriteria` içinde `"Clean Code"` geçiyor, oysa düz metin örneğinde
+kullanıcı "temiz kod yazımı" yazıyor. Gereken, kriterin korunması ve skorlamanın
+ona göre yapılması.
+
+*Bilinen sınır:* grounding kelime örtüşmesine dayandığı için tam bir çeviri
+("temiz kod yazımı" → "Clean Code") uydurma kriterden ayırt edilemez ve
+düzeltme turunu tetikler; sonuçta etiket kullanıcının dilinde kalır.
 
 Niyet sınıflandırması şemaya uygun JSON üretemezse mesaj **"chat" sayılmaz** —
 bu, kullanıcının kriter tanımını sessizce kaybetmek olurdu ve kullanıcı bunu

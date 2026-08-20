@@ -16,7 +16,7 @@ Sütunların anlamı:
 | FR-01 | Günlük sohbet, yerel dil modeliyle mantıklı/akıcı yanıt | `app/application/chat_service.py` | `tests/test_chat_service.py`; canlı koşu #4, #6 |
 | FR-02 | Sohbet geçmişi backend'de güvenli yönetilir, bağlam kaybolmaz | `chat_service.py` (sıcak pencere `CHAT_HISTORY_LIMIT`=40 + rolling summary), `sqlite_repo.py` | `tests/test_chat_service.py`, `tests/test_sqlite_repo.py`; canlı koşu #4 |
 | FR-03 | Sabit kriter yok; kullanıcı kriterleri serbest metinle tanımlar | `app/application/criteria_service.py` (LLM intent + extraction, komut zorunlu değil) | `tests/test_criteria_service.py` (özellikle `test_free_text_without_keyword_can_define_criteria`) |
-| FR-04 | Kriter etiketleri kullanıcının ifadesini yansıtır | `criteria_service.py` → `_grounded_criteria`, `_all_labels_exact` | `tests/test_criteria_service.py::test_paraphrased_but_grounded_label_triggers_verbatim_retry` |
+| FR-04 | Kullanıcının tanımladığı kriterlerin tamamı korunur; skorlama bunlara göre yapılır | `criteria_service.py` → `_grounded_criteria` (uydurma kriter reddi) | `tests/test_criteria_service.py::test_semantically_grounded_paraphrase_is_accepted`, `::test_natural_language_path_shares_grounding_correction` |
 | FR-05 | Tekli CV → dinamik kriterlere göre nitel analiz raporu | `app/application/cv_analysis_service.py::analyze` | `tests/test_cv_analysis_service.py`; canlı koşu #6 |
 | FR-06 | Raporda güçlü yönler, zayıf yönler, gelişim tavsiyeleri | `app/domain/models.py::EvaluationResult` (`strengths`/`weaknesses`/`recommendations`) | `tests/test_models.py`, `tests/test_formatter.py` |
 | FR-07 | Telegram'da okunaklı Markdown şablonu | `app/presentation/telegram/formatter.py::format_single_analysis` | `tests/test_formatter.py`, `tests/test_handlers.py` |
