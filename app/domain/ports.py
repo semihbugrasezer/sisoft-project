@@ -1,5 +1,5 @@
 """LLM istemcisi için Protocol — application katmanı somut sınıfa değil bu arayüze
-bağımlı olur (bkz. README.md → Tasarım Kararları). `OllamaClient` ve
+bağımlı olur (bkz. docs/DESIGN_DECISIONS.md). `OllamaClient` ve
 `OpenAICompatibleClient` (Ollama'nın kendi OpenAI-uyumlu ucu, LM Studio, vLLM) ikisi
 de bu arayüzü sağlar; container.py hangisinin kurulacağına ortam değişkenine göre
 karar verir, application servisleri hangi backend'in çalıştığını bilmez."""

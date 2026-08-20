@@ -1,6 +1,6 @@
 import pytest
 
-from app.application.cv_analysis_service import CVAnalysisService
+from app.application.cv_analysis_service import MAX_BATCH_EXTRACTED_CHARS, CVAnalysisService
 from app.domain.errors import LLMOutputValidationError
 from app.domain.models import (
     BatchCandidateEvaluation,
@@ -138,3 +138,29 @@ async def test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles():
     assert "RAW_SECRET_ONE" in llm.prompts[0]
     assert "RAW_SECRET_ONE" not in llm.prompts[1]
     assert analyses[0][1].scores[0].criterionLabel == "React tecrübesi"
+
+
+def test_batch_budget_leaves_small_documents_untouched():
+    texts = ["a" * 100, "b" * 200]
+    assert CVAnalysisService._fit_batch_budget(texts) == texts
+
+
+def test_batch_budget_trims_only_when_total_exceeds_limit():
+    # 5 belge × 20.000 = 100.000 karakter tek prompt'a girerse yerel modelin
+    # context window'unu taşırabilir; toplam bütçe uygulanmalı.
+    texts = ["x" * 20_000] * 5
+    fitted = CVAnalysisService._fit_batch_budget(texts)
+
+    assert sum(len(t) for t in fitted) <= MAX_BATCH_EXTRACTED_CHARS
+    assert all(len(t) > 0 for t in fitted)  # hiçbir belge tamamen silinmez
+
+
+def test_batch_budget_redistributes_unused_share_to_long_documents():
+    # Kısa belgeler payını kullanmazsa artan bütçe uzun belgeye verilmeli —
+    # aksi halde uzun CV gereksiz yere kırpılırdı.
+    texts = ["s" * 10, "L" * 100_000]
+    fitted = CVAnalysisService._fit_batch_budget(texts)
+
+    assert fitted[0] == texts[0]  # kısa belge dokunulmadan kalır
+    half = MAX_BATCH_EXTRACTED_CHARS // 2
+    assert len(fitted[1]) > half  # artan pay uzun belgeye aktarıldı

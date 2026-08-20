@@ -1,4 +1,4 @@
-"""Çoklu CV akışı (README.md → Çoklu CV Skorlama ve Sıralama).
+"""Çoklu CV akışı (docs/CONCURRENCY.md).
 
 İki aşamalı hata politikası:
 1. Validation aşaması fail-fast'tir: herhangi bir dosya bozuk/şifreli/okunamazsa

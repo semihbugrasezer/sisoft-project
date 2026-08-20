@@ -2,12 +2,16 @@
 
 Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel `qwen2.5:7b`
 sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — mock LLM istemcileriyle
-yapılan 80 birim/entegrasyon testine ek olarak. Ana proje tanımı için
+yapılan 89 birim/entegrasyon testine ek olarak. Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
 
 ## Genel Doğrulanan Davranış
 
-Tüm koşularda tutarlı biçimde gözlendi: LLM çıktısı Pydantic şemasına uydu.
+Yeterli kapasitedeki modelle (`qwen2.5:7b`) yapılan tüm koşularda LLM çıktısı
+Pydantic şemasına uydu. **İstisna:** 0.5B'lik küçük bir modelle (koşu #5)
+şemaya uygun JSON iki denemede de üretilemedi — bu bir kod hatası değil model
+kapasitesi sınırıdır ve kullanıcıya kontrollü hata mesajı döndürülerek doğru
+biçimde ele alındı.
 Concurrency (paralel PDF validation, eşzamanlı Telegram update işleme, chat_id
 bazlı kilit) batch işlenirken botu bloklamadı. PDF validation sırası (imza →
 açılabilirlik → şifre → sayfa varlığı → okunabilir metin) her adımda doğru hata
@@ -41,8 +45,11 @@ nesnesinin kısıtlı JSON şemasıdır:
 
 - Kriter çıkarımı: ~70 saniye.
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
-- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): 580s / 463.5s / 476.7s —
-  üç koşuda tutarlı olarak ~8-10 dakika.
+- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): dört ölçüm —
+  580s / 463.5s / 476.7s / **852s**. Yani **~8-14 dakika** aralığı; en güncel
+  ve tam uçtan uca koşu (#7, gerçek Telegram) 852s = 14.2 dakikadır.
+  Diğer dokümanlarda tek bir rakam gerekiyorsa **~14 dakika** (en kötü/en
+  güncel ölçüm) kullanılır.
 
 Bu, gerçek bir LM Studio sunucusuna karşı da canlı doğrulandı (mock değil):
 `OpenAICompatibleClient.structured_chat()` çağrıldı ve dönen JSON gerçekten
@@ -108,8 +115,9 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 
 ## Bilinen Sınırlamalar
 
-- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8-10
-  dakika sürer (yukarıya bakın). Darboğaz model/donanımdır, mimari değil.
+- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~14
+  dakika sürer (ölçüm aralığı 8-14 dk, yukarıya bakın). Darboğaz
+  model/donanımdır, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler `validate_and_extract_text`
   tarafından "okunabilir metin bulunamadı" hatasıyla reddedilir, OCR ile
   işlenmez. Ödev PDF'i zaten okunamaz belgelerin validation'da yakalanmasını

@@ -93,8 +93,11 @@ python main.py
 | `LLM_BACKEND` | `ollama` | `ollama` veya `openai_compatible` |
 | `LLM_BASE_URL` | `http://localhost:11434` | LLM sunucu adresi |
 | `LLM_MODEL` | `qwen2.5:7b` | Kullanılacak model |
+| `LLM_INTENT_MODEL` | *(boş)* | İsteğe bağlı: niyet sınıflandırması için daha küçük/hızlı model. Boşsa `LLM_MODEL` kullanılır |
+| `LLM_API_KEY` | *(boş)* | İsteğe bağlı: uzak/korumalı OpenAI-uyumlu uç için Bearer token |
 | `LLM_MAX_CONCURRENCY` | `3` | Sunucuya aynı anda giden istek limiti |
 | `LLM_TIMEOUT` | `1200` | Tek LLM isteği için üst sınır (saniye) |
+| `DB_PATH` | `sisoft.db` | SQLite dosya yolu |
 
 `LLM_BACKEND=openai_compatible` seçilirse bot `/v1/chat/completions` üzerinden
 LM Studio veya vLLM ile konuşur; `LLM_BASE_URL`/`LLM_MODEL` yalnızca farklı bir
@@ -131,7 +134,7 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-80 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+89 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
 canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
 **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 

@@ -37,7 +37,7 @@ def load_config() -> Config:
         # 'ollama': OllamaClient, Ollama'nın kendi /api/chat'ini kullanır (varsayılan,
         # davranış değişmez). 'openai_compatible': OpenAICompatibleClient, /v1/chat/
         # completions üzerinden LM Studio, vLLM veya Ollama'nın kendi OpenAI-uyumlu
-        # ucuyla konuşur — bkz. README.md → Tasarım Kararları. Değişken adları jenerik
+        # ucuyla konuşur — bkz. docs/DESIGN_DECISIONS.md. Değişken adları jenerik
         # (LLM_*) tutulur çünkü ikisi de aynı üç değeri (adres/model/eşzamanlılık)
         # kullanır; LM Studio/vLLM kullanırken "OLLAMA_..." adı kafa karıştırırdı.
         llm_backend=llm_backend,

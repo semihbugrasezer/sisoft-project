@@ -5,7 +5,7 @@ protokolü konuşur — resmi dokümantasyonlarından doğrulandı (ctx7):
   - Ollama: /v1/chat/completions, response_format.type="json_schema" destekler
     (github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx).
   - LM Studio ve vLLM aynı OpenAI response_format sözleşmesini uygular.
-Canlı doğrulama: bkz. README.md → Deneysel Doğrulama.
+Canlı doğrulama: bkz. docs/VALIDATION.md.
 """
 from __future__ import annotations
 
