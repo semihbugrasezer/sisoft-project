@@ -6,8 +6,9 @@ sorusunu yanıtlar. Bu script farklı bir soruyu yanıtlar: **"yapılandırılm�
 ödevin gerçek senaryosunu geçebiliyor mu?"**
 
 Kritik nokta: script yalnızca "MultiAnalysisResponse oluştu" diye PASS vermez —
-ortalamaları ve sıralamayı KENDİSİ bağımsız olarak yeniden hesaplayıp uygulamanın
-sonucuyla karşılaştırır. Aksi halde skorlama hatası testi de birlikte yanıltırdı.
+dönen adayların ortalamalarını KENDİSİ yeniden hesaplar ve top-3'ün kendi içindeki
+sıralamasını doğrular. Aksi halde skorlama hatası testi de birlikte yanıltırdı.
+(Top-3 SEÇİM algoritması ayrıca tests/test_scoring.py'de deterministik test edilir.)
 
 CI'a konmaz: gerçek LLM deterministik değildir ve dakikalar sürer. Bir modelin
 "desteklenen" sayılması için bu script'i geçmesi beklenir.
@@ -30,18 +31,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.config import load_config  # noqa: E402
 from app.container import build_container  # noqa: E402
 from app.domain.models import MAX_CV_COUNT, MultiAnalysisResponse  # noqa: E402
+from app.presentation.telegram.formatter import format_single_analysis  # noqa: E402
 
-# Ödev PDF §2'deki serbest metin kriter örneği. Kullanıcı komut kullanmaz.
+# Ödev PDF §2'deki serbest metin örneğinin BİREBİR kendisi. Kullanıcı komut
+# kullanmaz — kriterleri normal sohbet içinde tanımlar.
 ASSIGNMENT_CRITERIA_MESSAGE = (
-    "CV'leri React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumu "
-    "kriterlerine göre değerlendir"
+    "Bana bu CV'yi React tecrübesi, temiz kod yazımı ve "
+    "uzaktan çalışma uyumuna göre skorla"
 )
 
-# Beklenen üç kavram. Türkçe ek çeşitliliğine (uyumu/uyumuna) tolerans için
-# önek eşleşmesi kullanılır; amaç etiketin birebir aynı olması değil, ÜÇ
-# KAVRAMIN DA yakalanmış olması.
+# Yukarıdaki cümlede geçen üç kriter. Etiketler kullanıcı metninden birebir
+# alındığı için son kelime cümledeki çekimli hâliyle gelebilir
+# ("uzaktan çalışma uyumu" / "...uyumuna") — eşleşme bunu tolere eder, ama
+# kelime SAYISI ve diğer kelimeler birebir eşleşmek zorundadır (bkz. _matches).
 EXPECTED_CRITERIA = [
-    "react tecrübesi",
+    "React tecrübesi",
     "temiz kod yazımı",
     "uzaktan çalışma uyumu",
 ]
@@ -53,10 +57,27 @@ def _norm(text: str) -> str:
     return unicodedata.normalize("NFKC", text).casefold().strip()
 
 
+def _label_matches(expected: str, actual: str) -> bool:
+    """Kelime bazlı sıkı eşleşme, yalnız son kelimede Türkçe çekim toleransı.
+
+    Neden düz `startswith` değil: "React" tek başına "React tecrübesi"nin öneki
+    olduğu için eksik bir etiketi PASS ettirirdi. Kelime sayısı eşitliği bunu
+    engeller. Neden tam eşitlik de değil: birebir-etiket zorunluluğu nedeniyle
+    etiket, kullanıcının cümlesindeki çekimi devralır ("uyumuna").
+    """
+    expected_words = _norm(expected).split()
+    actual_words = _norm(actual).split()
+    if len(expected_words) != len(actual_words):
+        return False
+    *expected_head, expected_last = expected_words
+    *actual_head, actual_last = actual_words
+    if expected_head != actual_head:
+        return False
+    return actual_last.startswith(expected_last) or expected_last.startswith(actual_last)
+
+
 def _matches(expected: str, actual_labels: list[str]) -> bool:
-    """Ek çeşitliliğini tolere eden eşleşme: biri diğerinin öneki olabilir."""
-    e = _norm(expected)
-    return any(_norm(a).startswith(e) or e.startswith(_norm(a)) for a in actual_labels)
+    return any(_label_matches(expected, actual) for actual in actual_labels)
 
 
 class Report:
@@ -144,9 +165,31 @@ async def run(full: bool) -> int:
             ", ".join(f"{k}={len(v)}" for k, v in sections.items()),
         )
 
+        # Markdown şablonunun PDF'in istediği başlıkları ürettiğini doğrula.
+        # Ek LLM çağrısı gerektirmez — eldeki sonucu formatlar.
+        rendered = format_single_analysis(profile, evaluation)
+        missing = [h for h in ("Güçlü Yönler", "Zayıf Yönler", "Gelişim Tavsiyeleri")
+                   if h not in rendered]
+        report.check(
+            not missing,
+            "Markdown rapor başlıkları üretildi",
+            "eksik: " + ", ".join(missing) if missing else f"{len(rendered)} karakter",
+        )
+
         # --- 3) Çoklu CV → top-3 JSON (PDF §4) -------------------------------
         if full:
+            # Ödevin çoklu senaryosu 5 CV üzerinden tanımlı; fixture eksikse
+            # acceptance'ın önemli bir bölümü sessizce daha zayıf bir senaryoyu
+            # test etmiş olurdu.
+            if len(cv_paths) < MAX_CV_COUNT:
+                report.check(
+                    False,
+                    f"{MAX_CV_COUNT} mock CV mevcut",
+                    f"bulunan: {len(cv_paths)} — scripts/generate_mock_cvs.py çalıştırın",
+                )
+                return 1
             files = [(p.name, p.read_bytes()) for p in cv_paths[:MAX_CV_COUNT]]
+            report.check(len(files) == MAX_CV_COUNT, f"Batch CV sayısı = {MAX_CV_COUNT}")
             print(f"\n3) Çoklu CV batch ({len(files)} CV) — birkaç dakika sürebilir")
             t0 = time.monotonic()
             response, _ = await container.batch_service.analyze_batch(files, criteria)
@@ -170,8 +213,13 @@ async def run(full: bool) -> int:
 
 
 def _verify_response(response: MultiAnalysisResponse, files, criteria, report: Report) -> None:
-    """Uygulamanın çıktısını BAĞIMSIZ olarak yeniden doğrular — sadece 'nesne
-    oluştu' demek yetmez, aritmetik ve sıralama burada tekrar hesaplanır."""
+    """Dönen top-3'ü bağımsız doğrular: her adayın ortalaması yeniden hesaplanır
+    ve üçlünün kendi içindeki sıralaması kontrol edilir.
+
+    Kapsam sınırı: script yalnızca DÖNEN üç adayı görür, elenen 4. ve 5. adayın
+    ortalamasını bilmez — dolayısıyla "bu üçü gerçekten en yükseği mi?" sorusunu
+    buradan kanıtlayamaz. Top-3 SEÇİM algoritması (eşitlik durumu dahil)
+    tests/test_scoring.py'de deterministik olarak test edilir."""
     print("\n4) Çıktı sözleşmesi (bağımsız doğrulama)")
 
     report.check(response.status == "success", "status = success")
@@ -202,7 +250,8 @@ def _verify_response(response: MultiAnalysisResponse, files, criteria, report: R
     )
     report.check(all_scored, "Her adayda tüm kriterlerin skoru var")
 
-    # Ortalamayı BAĞIMSIZ yeniden hesapla (scoring.py'ye güvenme).
+    # Ortalamayı BAĞIMSIZ yeniden hesapla — scoring.py'ye güvenme; aksi halde
+    # oradaki bir hata bu testi de birlikte yanıltırdı.
     arithmetic_ok = True
     for candidate in response.topCandidates:
         values = list(candidate.dynamicScores.values())
@@ -211,12 +260,12 @@ def _verify_response(response: MultiAnalysisResponse, files, criteria, report: R
             arithmetic_ok = False
             print(f"      {candidate.pdfFileName}: beklenen {expected}, "
                   f"gelen {candidate.averageScore}")
-    report.check(arithmetic_ok, "Ortalamalar bağımsız olarak yeniden hesaplandı")
+    report.check(arithmetic_ok, "Dönen adayların ortalamaları bağımsız yeniden hesaplandı")
 
     averages = [c.averageScore for c in response.topCandidates]
     report.check(
         averages == sorted(averages, reverse=True),
-        "Sıralama azalan ortalamaya göre",
+        "Dönen top-3 kendi içinde azalan sırada",
         str(averages),
     )
 

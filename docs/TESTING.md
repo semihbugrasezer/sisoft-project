@@ -103,15 +103,23 @@ python scripts/validate_assignment.py --full    # + 5 CV batch, top-3 (~15 dk)
 
 Kontrol ettikleri:
 
-- Serbest metin mesajı kriter olarak sınıflandırıldı mı
+- Ödev PDF'indeki kriter cümlesi **birebir** kullanılır; mesaj kriter olarak
+  sınıflandırıldı mı
 - **Kriter eksiksizliği: 3/3** — şema-geçerli olması eksiksiz olduğu anlamına
   gelmez; canlı koşuda bir model üç kriterden yalnız birini çıkarmıştı
 - Ortak JSON şemasına çıkarım (`candidateName`, yetenekler)
 - Her kritere puan verildi mi, nitel rapor alanları dolu mu
 - `--full`: `processedCVCount`, `topCandidates` sayısı, `rank` sırası,
   `userDefinedCriteria` eşleşmesi, her adayda tüm skorlar
-- **Ortalamalar ve sıralama bağımsız olarak yeniden hesaplanır** — script
-  `scoring.py`'ye güvenmez; aksi halde bir skorlama hatası testi de yanıltırdı
+- **Dönen adayların ortalamaları bağımsız yeniden hesaplanır** ve top-3'ün kendi
+  içindeki sıralaması doğrulanır — script `scoring.py`'ye güvenmez; aksi halde
+  oradaki bir hata testi de yanıltırdı. *Kapsam sınırı:* script yalnız dönen üç
+  adayı görür, elenen 4./5. adayın ortalamasını bilmez; top-3 **seçim**
+  algoritması `tests/test_scoring.py`'de deterministik test edilir
+- `--full` gerçekten 5 mock CV bulunduğunu doğrular (fixture eksikse sessizce
+  daha zayıf bir senaryo test edilmiş olurdu)
+- Markdown rapor başlıkları (Güçlü Yönler / Zayıf Yönler / Gelişim Tavsiyeleri)
+  üretiliyor mu — ek LLM çağrısı gerektirmez
 
 CI'a konmaz: gerçek LLM deterministik değildir ve dakikalar sürer. Bir modelin
 "desteklenen" sayılması için bu script'i geçmesi beklenir.
