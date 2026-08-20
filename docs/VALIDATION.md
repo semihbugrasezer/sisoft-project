@@ -2,7 +2,7 @@
 
 Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel `qwen2.5:7b`
 sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — mock LLM istemcileriyle
-yapılan 78 birim/entegrasyon testine ek olarak. Ana proje tanımı için
+yapılan 80 birim/entegrasyon testine ek olarak. Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
 
 ## Genel Doğrulanan Davranış
@@ -25,6 +25,15 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 | 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı; `openai_compatible` backend'i 7B+ sınıfı bir modelle kullanılmalı. |
 | 6 | Gerçek (anonimleştirilmiş) bir CV, Türkçe aksanlı karakterler içeriyor (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanında harf yer değiştirmesi gözlendi (ör. "ğ" içeren bir isimde iki harf yer değiştirdi) — Türkçe aksanlı karakterlerde model kaynaklı bir hata. | Prompt zaten "candidateName alanına birebir aktar" talimatı içeriyor (`CV_EXTRACTOR_SYSTEM`) — bu bir prompt eksikliği değil, 7B modelin nadir/aksanlı token'larda ad kopyalarken yaptığı bir hallüsinasyon. Kayıtlı bilinen sınırlama; ölçülebilir tek bir örnekle prompt'u aşırı-uydurmak yerine belgelenmesi tercih edildi. |
 | 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
+
+> **Not (Koşu 1 hakkında güncelleme):** Yukarıdaki 1. koşuda gözlenen parafraz
+> kabulü ("React tecrübesi" → "React deneyimi") o tarihte kasıtlı bir tasarım
+> tercihiydi. Daha sonra ödev PDF'indeki örnek JSON'un kullanıcının ifadesini
+> birebir yansıtmasını beklediği netleşince `CriteriaService.define_criteria`
+> bir düzeltme turu daha ekleyecek şekilde sıkılaştırıldı (bkz.
+> `_all_labels_exact`, [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md)) — artık
+> parafraz edilmiş ama grounded bir label tek turda kabul edilmiyor, önce
+> birebir kopya için bir şans daha veriliyor.
 
 Girdi metni toplamda yalnızca ~834 token (5 mock CV, ilk üç koşu). Ölçülen süre
 CV boyutundan gelmez; kaynağı 5 iç içe `CandidateProfile`/`evaluation`
