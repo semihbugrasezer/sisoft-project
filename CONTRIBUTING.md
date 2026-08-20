@@ -17,9 +17,11 @@ Gerçek token/API anahtarı değerlerini **asla commit etmeyin**.
 
 ## Branch ve PR Politikası
 
-`main` korunan branch'tir: CI kontrolleri geçmeden ve bir onay alınmadan
-merge edilemez. Kalıcı bir `development` branch **kullanılmaz** — tek
-geliştiricili bir projede ikinci bir entegrasyon noktası karşılıksız yüktür.
+`main` korunan branch'tir: normal kullanıcılar için CI kontrolleri ve bir onay
+zorunludur. Tek geliştiricili bakım/kurtarma yolu için repository admin bypass'ı
+açıktır; admin bu kuralı teknik olarak aşabilir. Kalıcı bir `development` branch
+**kullanılmaz** — tek geliştiricili bir projede ikinci bir entegrasyon noktası
+karşılıksız yüktür.
 
 Her değişiklik kısa ömürlü bir branch'te geliştirilir:
 
@@ -97,8 +99,8 @@ CV ve kullanıcı içeriği daima **güvenilmeyen veri** kabul edilir; bkz.
 Kısa, açıklayıcı, emir kipinde. Bir commit tek mantıksal değişiklik içermeli:
 
 ```text
-feat: kriter etiketlerinde birebir eşleşme zorunlu kıl
-fix: analiz hata verse de bekleyen CV'leri temizle
+fix: kriterleri kaynak metne karşı doğrula
+fix: analiz kuyruğunu atomik olarak sahiplen
 docs: eşzamanlılık modelini belgele
 test: PDF kırpma sınırını kapsa
 ```

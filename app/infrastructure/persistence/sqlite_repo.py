@@ -222,6 +222,21 @@ class SQLiteRepo:
         )
         return cur.fetchall()
 
+    async def take_pending_files(self, chat_id: int) -> list[tuple[str, bytes]]:
+        """Bekleyen dosyaları tek kritik bölümde alıp kuyruktan çıkarır.
+
+        Aynı sohbetten iki `/analyze` çağrısı aynı snapshot'ı işleyemez; analiz
+        başladıktan sonra yüklenen yeni dosyalar da sonraki kuyrukta kalır.
+        """
+        async with self._lock:
+            return await asyncio.to_thread(self._take_pending_files_sync, chat_id)
+
+    def _take_pending_files_sync(self, chat_id: int) -> list[tuple[str, bytes]]:
+        with self._conn:
+            rows = self._get_pending_files_sync(chat_id)
+            self._conn.execute("DELETE FROM pending_files WHERE chat_id = ?", (chat_id,))
+        return rows
+
     async def clear_pending_files(self, chat_id: int) -> None:
         async with self._lock:
             await asyncio.to_thread(self._exec_sync, "DELETE FROM pending_files WHERE chat_id = ?", (chat_id,))

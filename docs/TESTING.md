@@ -21,28 +21,28 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **127 test**, 18 dosyada. (Test sayısının tek kaynağı bu
+Toplam **140 test**, 18 dosyada. (Test sayısının tek kaynağı bu
 dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
 | `test_cv_layouts.py` | 7 | Beş farklı PDF layout'unun (tek kolon, iki kolon, tablo, farklı bölüm sırası, çok sayfalı) okunabildiği ve içeriğinin korunduğu |
 | `test_pdf_parser.py` | 16 | 6 doğrulama senaryosu (boş/imza/bozuk/şifreli/sayfasız/metinsiz), farklı layout'lar (tek sütun, iki sütun, çok sayfa, tablo), kırpma sınırı ve tam-sınır durumu |
-| `test_criteria_service.py` | 13 | Serbest metinden kriter çıkarımı, grounding, grounding düzeltme turu (hem `/criteria` hem doğal dil akışında), intent modeli override'ı, niyet belirlenemezse açık hata |
+| `test_criteria_service.py` | 18 | Serbest metinden kriter çıkarımı, kısmi sonuç birleştirme/tamlık kontrolü, sıkı grounding, intent modeli override'ı, niyet belirlenemezse açık hata |
 | `test_models.py` | 12 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
-| `test_sqlite_repo.py` | 9 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
+| `test_sqlite_repo.py` | 10 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme ve sahiplenme (TOCTOU) |
 | `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
-| `test_cv_analysis_service.py` | 8 | Kriter kimliği zorlaması, ham metnin evaluator'a sızmaması, batch context bütçesi |
+| `test_cv_analysis_service.py` | 10 | Kriter kimliği ve profile-grounded kanıt zorlaması, doğal dil evidence toleransı, ham metnin evaluator'a sızmaması, batch context bütçesi |
 | `test_openai_compatible_client.py` | 6 | LM Studio/vLLM uyumlu istemci, `response_format` sözleşmesi, retry, Bearer token |
 | `test_chat_service.py` | 5 | Sıcak pencere + rolling summary, özetleme hatasında veri kaybı olmaması |
 | `test_config.py` | 5 | Backend seçimi, geçersiz değer reddi, zorunlu token |
 | `test_scoring.py` | 5 | Ortalama hesaplama, top-3 sıralama, eşitlik durumu |
-| `test_handlers.py` | 6 | Telegram akışı, Markdown fallback, kırpma uyarısı, büyük JSON'un dosya olarak gönderilmesi, sohbet sırası/kilit davranışı |
+| `test_handlers.py` | 8 | Telegram akışı, Markdown fallback, kırpma uyarısı, atomik analiz kuyruğu, reset/sohbet yarışları, sohbet sırası/kilit davranışı |
 | `test_media_group_collector.py` | 6 | Albüm toplama, debounce, limit, kapatılmış gruba geç gelen dosya |
 | `test_formatter.py` | 3 | Markdown rapor, JSON çıktı biçimi |
 | `test_ollama_client.py` | 2 | `/api/chat` sözleşmesi, şema retry'ı |
 | `test_grounding.py` | 7 | candidateName kaynak-doğrulama: aksanlı isim bozulması, uydurma ad, sıralama/büyük-küçük harf toleransı |
-| `test_acceptance_matcher.py` | 9 | Kabul testi kriter eşleştiricisi — eksik/parafraz etiketin PASS etmemesi, Türkçe çekim toleransı |
+| `test_acceptance_matcher.py` | 12 | Kabul testi kriter eşleştiricisi — eksik etiket reddi, Türkçe çekim ve PDF örneğindeki anlamsal alias toleransı |
 | `test_router.py` | 1 | Eşzamanlı update kabulü |
 
 ## Neyin Taklit Edildiği (ve Neyin Edilmediği)
@@ -66,7 +66,6 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 |---|---|
 | `test_single_analysis_report_falls_back_to_plain_text_on_bad_markdown` | LLM'in ürettiği dengesiz `*`/`_` Telegram'ın Markdown parser'ını kırıyor, kullanıcı raporu hiç göremiyordu |
 | `test_truncated_is_true_only_when_a_page_is_actually_dropped` | Bütçeyi dolduran sayfa son sayfaysa `truncated` yanlışlıkla `False` kalıyordu |
-| `test_paraphrased_but_grounded_label_triggers_verbatim_retry` | Model kriter etiketini parafraz edince ödevin beklediği birebir çıktı bozuluyordu |
 | `test_free_text_without_keyword_can_define_criteria` | Anahtar-kelime kısayolu denendi; bu test onu anında kırdı ve yaklaşım geri alındı |
 | `test_more_than_five_cvs_is_rejected_before_processing` | 5 CV limiti LLM'e gitmeden önce uygulanmalı |
 | `test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles` | Ham CV metninin evaluator prompt'una sızmaması (ödevin çekirdek şartı) |
@@ -75,6 +74,12 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 | `test_intent_failure_retries_with_main_model` / `test_intent_failure_on_both_models_raises_explicit_error` | Küçük intent modeli JSON üretemeyince kullanıcının kriter tanımı sessizce sohbete düşüyordu; artık ana modelle tekrar denenir, o da başarısızsa `IntentUndecidableError` |
 | `test_natural_language_path_shares_grounding_correction` | Grounding düzeltmesi yalnız `/criteria` yolunda çalışıyordu; komutsuz (asıl) akış uydurma kriteri doğrudan kaydedebiliyordu |
 | `test_semantically_grounded_paraphrase_is_accepted` | PDF'de olmayan bir birebir-etiket kısıtı eklenmişti; parafrazı reddedip gereksiz düzeltme turu tetikliyordu |
+| `test_drops_partially_grounded_label_with_unrequested_terms` | Tek ortak kelime, modelin etikete kullanıcıdan gelmeyen Kubernetes/liderlik gibi kavramlar eklemesini engellemiyordu |
+| `test_natural_language_criteria_uses_dedicated_extraction_before_save` | Intent+extraction birleşik çıktısı bazı modellerde kriter atlıyordu; criteria niyetinde özel extractor her zaman çalışmalı |
+| `test_partial_extraction_retries_and_combines_grounded_criteria` / `test_intent_and_extractor_partial_results_are_combined_before_missing_retry` | LM Studio kısmi listeler ürettiğinde grounded sonuçlar birleştirilmeli, eksik kaynak terimleri için tek düzeltme turu yapılmalı |
+| `test_high_score_evidence_must_exist_in_normalized_profile` | Profile dayanmayan serbest bir evidence cümlesi yüksek skorla kabul edilebiliyordu |
+| `test_take_pending_files_claims_snapshot_atomically` | Eşzamanlı iki `/analyze` aynı kuyruğu iki kez işleyebiliyor, analiz sırasında yüklenen dosya son temizlikte silinebiliyordu |
+| `test_reset_waits_for_in_flight_chat_before_clearing_history` | Devam eden LLM yanıtı `/reset` sonrasında eski mesajı geçmişe geri yazabiliyordu |
 | `test_bot_still_answers_chat_while_batch_is_running` | Ödevin "batch sırasında bot yanıt vermeli" şartı: kilitler birleştirilirse bu test timeout'a düşer |
 | `test_every_layout_is_readable_and_keeps_key_content` | Beş mock CV aynı şablonla üretiliyordu; "farklı format" şartı hiç test edilmiyordu |
 | `test_qualitative_report_sections_cannot_be_empty` | Kabul testi gerçek modelde yakaladı: rapor bölümleri boş gelebiliyor, kullanıcı "(belirtilmedi)" görüyordu |
@@ -90,12 +95,13 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  127 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  140 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 
-`main` korumalıdır: bu kontroller geçmeden ve bir onay alınmadan merge
-edilemez.
+`main` korumalıdır: normal kullanıcılar için bu kontroller ve bir onay
+zorunludur. Tek geliştiricili bakım/kurtarma yolu için repository admin bypass'ı
+açıktır; bu istisna GitHub ayarında ve burada açıkça belirtilir.
 
 ## Kabul Testi (Gerçek Model)
 

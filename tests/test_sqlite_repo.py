@@ -118,6 +118,25 @@ async def test_try_add_pending_file_enforces_limit_atomically(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_take_pending_files_claims_snapshot_atomically(tmp_path):
+    repo = SQLiteRepo(str(tmp_path / "chat.db"))
+    await repo.add_pending_file(1, "a.pdf", b"a")
+    await repo.add_pending_file(1, "b.pdf", b"b")
+
+    first, second = await __import__("asyncio").gather(
+        repo.take_pending_files(1),
+        repo.take_pending_files(1),
+    )
+
+    await repo.add_pending_file(1, "new.pdf", b"new")
+    remaining = await repo.get_pending_files(1)
+    await repo.close()
+
+    assert sorted((first, second), key=len) == [[], [("a.pdf", b"a"), ("b.pdf", b"b")]]
+    assert remaining == [("new.pdf", b"new")]
+
+
+@pytest.mark.asyncio
 async def test_purge_expired_pending_files_removes_only_old_entries(tmp_path):
     # CV kişisel veridir: /batch ile yüklenip hiç /analyze edilmemiş dosyalar
     # süresiz kalmamalı (bkz. SECURITY.md).

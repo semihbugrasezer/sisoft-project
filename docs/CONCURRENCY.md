@@ -74,6 +74,11 @@ Aynı yarış koşulu veritabanı seviyesinde de düşünüldü:
 dosyanın aynı sayıyı okuyup 5 CV limitini birlikte aşmasına izin verirdi
 (TOCTOU). Atomiklik tek bir SQL statement'tan değil, bu lock'tan gelir.
 
+`/analyze` da `take_pending_files` ile snapshot'ı aynı lock altında okuyup
+kuyruktan çıkarır. Böylece eşzamanlı iki `/analyze` aynı CV'leri iki kez
+işleyemez; analiz başladıktan sonra yüklenen yeni dosyalar sonraki kuyrukta
+kalır ve eski analizin temizliğinde silinmez.
+
 ## Neden asyncio (Thread Pool "Yerine" Değil, Onunla Birlikte)
 
 İş yükünün büyük kısmı I/O-bound'dur:

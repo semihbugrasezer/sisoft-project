@@ -11,8 +11,10 @@ doğal dille tanımlar; yüklenen CV'ler doğrulanır, ortak bir `CandidateProfi
 
 Yerel-öncelikli çalışır: varsayılan yapılandırma `localhost`'taki Ollama'ya
 bağlanır, bulut servisi veya API anahtarı gerektirmez. Referans model
-**Ollama + `qwen2.5:7b`**'dir. **LM Studio** entegrasyonu da uçtan uca
-doğrulanmıştır (`google/gemma-4-e4b`); **vLLM** aynı protokolü kullanır.
+**Ollama + `qwen2.5:7b`**'dir. **LM Studio** protokol entegrasyonu canlı
+doğrulanmıştır; bu makinedeki `google/gemma-4-e4b` modeli güncel kabul koşusunda
+tüm kalite kapılarını tutarlı geçememiştir. **vLLM** aynı protokolle uyumludur
+ancak bu donanımda canlı çalıştırılmamıştır.
 Çıkarım kalitesi modele bağlıdır — ölçümler:
 [docs/VALIDATION.md](docs/VALIDATION.md).
 
@@ -22,6 +24,8 @@ Gerçek Telegram üzerinden, gerçek yerel Ollama sunucusuna karşı çalıştı
 5 CV'lik toplu analiz — top-3 JSON çıktısı, ödev PDF §4 şemasıyla birebir:
 
 <img src="docs/images/demo-batch-json-1.png" alt="Telegram'da 5 CV albüm gönderimi ve top-3 JSON çıktısı" width="480">
+
+<img src="docs/images/demo-batch-json-2.png" alt="Telegram top-3 JSON çıktısının ikinci bölümü ve üçüncü aday" width="480">
 
 ## Yetenekler
 
@@ -65,9 +69,18 @@ Aritmetik ortalama ve sıralama LLM'e değil backend'e aittir
 (`app/domain/scoring.py`). Katman sorumlulukları, bağımlılık yönü ve hata
 yayılımı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
+## Önkoşullar
+
+- Python 3.13 veya 3.14
+- BotFather'dan alınmış bir Telegram bot token'ı
+- Yerel LLM sunucusu: varsayılan akış için [Ollama](https://ollama.com/download),
+  alternatif olarak LM Studio veya vLLM
+
 ## Kurulum
 
 ```bash
+git clone https://github.com/semihbugrasezer/sisoft-project.git
+cd sisoft-project
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # TELEGRAM_BOT_TOKEN ekleyin (BotFather'dan)

@@ -19,6 +19,30 @@ açılabilirlik → şifre → sayfa varlığı → okunabilir metin) her adımd
 mesajı üretti — dört farklı geçersiz PDF senaryosu (`scripts/generate_invalid_cvs.py`)
 canlı Telegram üzerinden ayrıca doğrulandı.
 
+## 2026-08-21 Bağımsız Audit Tekrarı
+
+Bu tur önceki sonuçlara güvenmek yerine kabul script'ini yeniden çalıştırdı.
+Ortam: Python 3.14, Apple M2/16 GB, Ollama `qwen2.5:7b`, LM Studio
+`google/gemma-4-e4b`; başlangıç Git commit'i `45faefe` idi.
+
+| Backend / aşama | Sonuç | Süre / not |
+|---|---|---|
+| Ollama — kriter niyeti + özel extraction | ✅ 3/3 kriter | 97.5s; `React deneyimi`, `Temiz kod yazımı`, `Uzaktan çalışma uyumu` |
+| Ollama — tekli CV tam hattı | ✅ PASS | 195.1s; profile extraction, 3/3 skor, nitel bölümler ve Markdown başlıkları geçti |
+| LM Studio — düzeltme öncesi kriter akışı | ⚠️ 2/3 kriter | Birleşik intent çıktısı uzaktan çalışma kriterini atladı; bu bulgu özel extraction turunun her criteria niyetinde zorunlu olmasına yol açtı |
+| LM Studio — düzeltme sonrası tekrar | ⚠️ güvenli red | API ve JSON-schema entegrasyonu çalıştı. `gemma-4-e4b`, intent'te 2/3 ve özel extraction'da 1/3 kriter üretti; eksik-terim turunda da React'i tekrarladı. Servis kısmi listeyi kaydetmeyip kontrollü `LLMOutputValidationError` döndürdü (son koşu 25.4s) |
+
+Audit sırasında kabul ölçerinin yalnız çekim farklarını tanıyıp PDF'nin açıkça
+izin verdiği anlamsal eşdeğerleri (`tecrübe`/`deneyim`, `temiz kod`/`Clean Code`)
+yanlış FAIL saydığı da görüldü. Ölçer bu sınırlı alias'ları tanıyacak şekilde
+düzeltildi; eksik `React` gibi etiketler hâlâ reddedilir.
+
+İlk evidence-grounding denemesi evidence cümlesindeki her kelimeyi profile
+karşı aradığı için doğal dil açıklamalarını fazla katı biçimde reddetti. Son
+kural, yüksek skor kanıtında normalize profilden en az bir somut içerik terimi
+zorunlu tutar: tamamen profile-dışı kanıt reddedilir, profile dayalı açıklama
+kabul edilir. Bu davranış iki karşıt regresyon testiyle korunur.
+
 ## Bulunan Sorunlar ve Düzeltme Geçmişi
 
 | # | Koşu | Süre (batch) | Bulgu | Aksiyon |
@@ -30,7 +54,7 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 | 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı. **Bu teşhis daha sonra koşu #8'de doğrulandı:** aynı backend, 4B'lik bir modelle aynı adımı sorunsuz geçti. |
 | 6 | Gerçek (anonimleştirilmiş) bir CV, Türkçe aksanlı karakterler içeriyor (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanında harf yer değiştirmesi gözlendi (ör. "ğ" içeren bir isimde iki harf yer değiştirdi) — Türkçe aksanlı karakterlerde model kaynaklı bir hata. | **Çözüldü.** Prompt zaten "birebir aktar" diyordu; prompt'a güvenmek yetmedi. `is_grounded_in_source` (app/domain/grounding.py) ile deterministik kaynak-doğrulama eklendi: ad kaynak metinde geçmiyorsa bir düzeltme turu denenir, yine tutmazsa alan None'a çekilir ve çağıran dosya adına düşer. Bozulmuş ad artık rapora taşınmaz. |
 | 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
-| 8 | **LM Studio + `google/gemma-4-e4b` (4B), uçtan uca** — koşu #5'in açık bıraktığı boşluğu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama da başarılı (aşağıdaki tabloya bakın). Koşu #5'te 0.5B modelin başaramadığı yapılandırılmış JSON intent-classification burada sorunsuz çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Kalite farkı:** üç kriterlik girdiden yalnızca bir kriter çıkardı (`qwen2.5:7b` üçünü de çıkarıyor) — şema-uyumlu ve grounded, ama eksik. | Kod değişikliği gerekmedi. Koşu #5'teki "darboğaz model kapasitesiydi, kod değil" teşhisi doğrulandı; `openai_compatible` backend'inin kapasiteli bir modelle uçtan uca çalıştığı artık iddia değil, ölçüm. |
+| 8 | **LM Studio + `google/gemma-4-e4b` (4B), uçtan uca** — koşu #5'in açık bıraktığı boşluğu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama protokol düzeyinde çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Kalite farkı:** üç kriterlik girdiden yalnızca bir kriter çıktı (`qwen2.5:7b` üçünü de çıkarıyor). | 2026-08-21 audit'i kısmi kriterin üretimde kabul edildiğini gösterdi. Servis artık intent/extractor sonuçlarını grounded biçimde birleştirir, kaynak kapsamını denetler ve tek düzeltme turundan sonra hâlâ eksikse kaydetmek yerine kontrollü hata verir. Güncel Gemma koşusu bu güvenli reddi doğruladı. |
 
 > **Not (Koşu 1 hakkında güncelleme):** 1. koşuda gözlenen parafraz kabulü
 > ("React tecrübesi" → "React deneyimi") kasıtlı bir tasarım tercihiydi. Bir ara
@@ -66,6 +90,9 @@ sözleşmesini test eder — model kalitesini değil.
 yüklenip projenin **gerçek servisleri** üzerinden çalıştırıldı — mock yok,
 `CriteriaService` ve `CVAnalysisService` doğrudan çağrıldı:
 
+> Aşağıdaki tablo düzeltme öncesi tarihsel koşudur. Güncel güvenli-red sonucu
+> bu belgenin başındaki 2026-08-21 audit tablosundadır.
+
 | Aşama | Sonuç | Süre |
 |---|---|---|
 | Kriter çıkarımı (`define_criteria`) | ✅ `['React tecrübesi']` — şema-uyumlu, grounded | 25.7s |
@@ -80,13 +107,13 @@ deneyimi çok güçlüdür."* — temiz Türkçe, dil sızıntısı yok.
 sorunsuz çalıştı. "Darboğaz model kapasitesiydi, kod değil" teşhisi böylece
 ölçümle doğrulanmış oldu.
 
-**Gözlenen kalite farkı (kod hatası değil):** gemma-4-e4b, üç kriterlik bir
+**Gözlenen model farkı ve kabul boşluğu:** gemma-4-e4b, üç kriterlik bir
 girdiden ("React tecrübesi, temiz kod yazımı, uzaktan çalışma uyumu")
 yalnızca birini çıkardı; `qwen2.5:7b` (Ollama) aynı girdiden üçünü de
-çıkarıyor. Çıktı şemaya uygun ve kullanıcı metnine grounded — yani sistem
-yanlış bir şey üretmedi, eksik üretti. Bu, aynı kodun farklı modellerde
-farklı çıkarım kalitesi verdiğinin somut kaydıdır ve model seçiminin bir
-mimari parametre olduğunu gösterir.
+çıkarıyor. Eski servis şema-uyumlu ve grounded olan bu kısmi listeyi kabul
+ediyordu. Güncel servis kaynak kapsamını ayrıca denetleyerek eksik sonucu
+reddeder. Böylece model seçiminin kalite etkisi görünür kalırken eksiklik
+sessizce kalıcı veriye dönüşmez.
 
 **vLLM** ayrıca canlı test edilmedi — Apple Silicon GPU desteklemediği için bu
 ortamda çalıştırılamadı. Aynı `response_format` sözleşmesini uyguladığı resmi

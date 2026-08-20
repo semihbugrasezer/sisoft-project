@@ -40,3 +40,25 @@ def is_grounded_in_source(value: str | None, source_text: str) -> bool:
     if not source_words:
         return False
     return all(word in source_words for word in _words(value))
+
+
+_EVIDENCE_STOPWORDS = {
+    "aday", "alanında", "bir", "bu", "candidate", "deneyim", "deneyimi",
+    "deneyimlidir", "experience", "ile", "kanıt", "tecrübe", "the", "ve", "yıl",
+}
+
+
+def has_grounded_term_in_source(value: str, source_text: str) -> bool:
+    """Doğal dil evidence cümlesinde kaynaktan en az bir somut terim arar.
+
+    `candidateName` birebir aktarılmalıdır ve `is_grounded_in_source` ile tüm
+    kelimeleri doğrulanır. Evidence ise bir profil değerini doğal dille
+    açıklayabilir; burada bağlaç/açıklama kelimeleri değil, React/PostgreSQL gibi
+    en az bir içerik teriminin profile dayanması zorunludur.
+    """
+    evidence_words = {
+        word for word in _words(value)
+        if len(word) >= 3 and word not in _EVIDENCE_STOPWORDS
+    }
+    source_words = set(_words(source_text))
+    return bool(evidence_words & source_words)

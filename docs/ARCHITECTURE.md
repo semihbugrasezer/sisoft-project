@@ -121,8 +121,9 @@ Application / Infrastructure                │
 
 - **Batch'te all-or-nothing ön doğrulama:** bir dosya bile geçersizse hiçbir dosya LLM'e
   gönderilmez; kısmi sonuç yerine net bir hata döner.
-- **Garantili temizlik:** `/analyze` beklenmeyen bir istisna alsa bile
-  bekleyen CV verisi `try/finally` ile silinir (bkz. [SECURITY.md](../SECURITY.md)).
+- **Atomik sahiplenme ve temizlik:** `/analyze`, bekleyen CV snapshot'ını SQLite
+  lock'u altında alıp kuyruktan çıkarır. Eşzamanlı ikinci analiz aynı dosyaları
+  işleyemez; analiz sırasında yüklenen yeni CV'ler sonraki kuyrukta kalır.
 
 ## İstek Akışı (Tekli CV Analizi)
 
@@ -160,7 +161,7 @@ bunlardan **en az biri** yeterli. Bu proje zorunlu kapsamın ötesine geçip
 | Motor | Adaptör | Uç | Durum |
 |---|---|---|---|
 | Ollama | `OllamaClient` | `/api/chat` (Ollama'ya özgü) | `qwen2.5:7b` ile canlı doğrulandı |
-| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | `google/gemma-4-e4b` ile canlı doğrulandı |
+| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | Protokol canlı doğrulandı; yerel `google/gemma-4-e4b` güncel kalite kabulünü tutarlı geçemedi |
 | vLLM | `OpenAICompatibleClient` | `/v1/chat/completions` | Aynı protokol; donanım kısıtı nedeniyle canlı test edilmedi |
 
 **"OpenAI-uyumlu" bir protokol adıdır, servis adı değil.** HTTP biçimini

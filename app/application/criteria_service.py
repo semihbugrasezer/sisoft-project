@@ -16,6 +16,15 @@ from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
 logger = logging.getLogger(__name__)
 
+_CRITERIA_REQUEST_WORDS = {
+    "aday", "adaylar", "bana", "beceri", "becerisi", "benim", "bilgi",
+    "bilgisi", "bu", "cv", "değerlendir", "değerlendirme", "göre", "için",
+    "istiyorum", "kriter", "önemli", "skorla", "tecrübe", "tecrübesi",
+    "uyum", "uyumu", "uyumuna", "ve", "yazım", "yazımı", "yetenek",
+    "yetkinlik", "yetkinliği",
+}
+_CRITERIA_REQUEST_PREFIXES = ("değerlendir", "deneyim", "skorla", "tecrübe", "uyum")
+
 # NOT: Burada bir anahtar-kelime heuristic'i ile intent-classifier LLM çağrısını
 # atlamayı denedik (düz sohbet mesajlarını hızlandırmak için) — ama
 # test_free_text_without_keyword_can_define_criteria'yı kırdı: PDF açıkça
@@ -40,25 +49,76 @@ class CriteriaService:
         # kalır çünkü daha karmaşık ve doğruluğu daha kritik.
         self._intent_model = intent_model
 
-    async def define_criteria(self, chat_id: int, free_text: str) -> list[Criterion]:
+    async def define_criteria(
+        self,
+        chat_id: int,
+        free_text: str,
+        seed_criteria: list[Criterion] | None = None,
+    ) -> list[Criterion]:
         result = await self._llm.structured_chat(
             CRITERIA_EXTRACTOR_SYSTEM, free_text, CriteriaExtractionResult
         )
-        criteria = self._grounded_criteria(result.criteria, free_text)
-        if not criteria:
-            # Hiçbir kriter kullanıcının metnine dayanmıyor (model uydurmuş) —
-            # bir kez daha, daha açık bir talimatla denenir.
+        candidates = [*(seed_criteria or []), *result.criteria]
+        criteria: list[Criterion] = []
+        seen_ids: set[str] = set()
+        seen_labels: set[str] = set()
+        for criterion in self._grounded_criteria(candidates, free_text):
+            label = criterion.label.casefold()
+            if criterion.id not in seen_ids and label not in seen_labels:
+                criteria.append(criterion)
+                seen_ids.add(criterion.id)
+                seen_labels.add(label)
+        uncovered = self._uncovered_source_words(criteria, free_text)
+        if not criteria or uncovered:
+            missing = ", ".join(sorted(uncovered)) or "tüm kullanıcı kriterleri"
+            existing = ", ".join(criterion.label for criterion in criteria) or "yok"
             retry_result = await self._llm.structured_chat(
                 CRITERIA_EXTRACTOR_SYSTEM,
                 free_text
-                + "\n\nDÜZELTME: Yalnızca kullanıcı metninde gerçekten geçen "
-                "kriterleri çıkar; metinde olmayan kriter uydurma.",
+                + "\n\nDÜZELTME: Önceki çıktı şu kaynak terimlerini kapsamadı: "
+                + missing
+                + ". Mevcut doğru etiketleri tekrar etme: "
+                + existing
+                + ". Virgül ve 've' ile bağlanan her ayrı ölçüt için ayrı bir öğe üret; "
+                "yalnızca kullanıcı metninde geçen ölçütleri çıkar.",
                 CriteriaExtractionResult,
             )
-            criteria = self._grounded_criteria(retry_result.criteria, free_text)
+            retry_criteria = self._grounded_criteria(retry_result.criteria, free_text)
+            for criterion in retry_criteria:
+                if criterion.id not in seen_ids and criterion.label.casefold() not in seen_labels:
+                    criteria.append(criterion)
+                    seen_ids.add(criterion.id)
+                    seen_labels.add(criterion.label.casefold())
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
+        if self._uncovered_source_words(criteria, free_text):
+            raise LLMOutputValidationError("Model kullanıcı metnindeki tüm kriterleri çıkaramadı.")
         return await self._save(chat_id, criteria)
+
+    @staticmethod
+    def _uncovered_source_words(criteria: list[Criterion], source: str) -> set[str]:
+        source_words = {
+            word for word in re.findall(r"\w+", source.casefold())
+            if len(word) >= 3
+            and not word.isdigit()
+            and word not in _CRITERIA_REQUEST_WORDS
+            and not word.startswith(_CRITERIA_REQUEST_PREFIXES)
+        }
+        label_words = {
+            word
+            for criterion in criteria
+            for word in re.findall(r"\w+", criterion.label.casefold())
+        }
+        return {
+            source_word
+            for source_word in source_words
+            if not any(
+                source_word == label_word
+                or (len(source_word) >= 4 and label_word.startswith(source_word))
+                or (len(label_word) >= 4 and source_word.startswith(label_word))
+                for label_word in label_words
+            )
+        }
 
     @staticmethod
     def _intent_undecidable(cause: LLMOutputValidationError) -> IntentUndecidableError:
@@ -99,13 +159,10 @@ class CriteriaService:
                 raise self._intent_undecidable(first_error) from first_error
         if result.intent == "chat":
             return None
-        criteria = self._grounded_criteria(result.criteria, free_text)
-        # Doğal dil akışı ile `/criteria` akışı AYNI doğrulamadan geçmeli: hiçbir
-        # kriter kullanıcının metnine dayanmıyorsa düzeltme turu `define_criteria`
-        # içindedir, oraya devredilir.
-        if not criteria:
-            return await self.define_criteria(chat_id, free_text)
-        return await self._save(chat_id, criteria)
+        # Intent çağrısının işi yalnız mesaj türünü belirlemek. Canlı model
+        # koşularında birleşik intent+extraction çıktısı üç kriterden birini/ikisini
+        # atlayabildi; kriterleri her zaman bu işe özel prompt ile yeniden çıkar.
+        return await self.define_criteria(chat_id, free_text, result.criteria)
 
     async def _save(self, chat_id: int, criteria: list[Criterion]) -> list[Criterion]:
         await self._repo.set_criteria(chat_id, [criterion.model_dump() for criterion in criteria])
@@ -127,14 +184,23 @@ class CriteriaService:
         normalized_source = source.casefold()
         source_words = set(re.findall(r"\w+", normalized_source))
 
-        def is_grounded(criterion: Criterion) -> bool:
-            return CriteriaService._is_exact_label_match(
-                criterion.label, normalized_source
-            ) or any(
-                word in source_words
-                for word in re.findall(r"\w+", criterion.label.casefold())
-                if len(word) >= 3 and word not in generic_words
+        def appears_in_source(word: str) -> bool:
+            return any(
+                word == source_word
+                or (len(word) >= 4 and source_word.startswith(word))
+                or (len(source_word) >= 4 and word.startswith(source_word))
+                for source_word in source_words
             )
+
+        def is_grounded(criterion: Criterion) -> bool:
+            if CriteriaService._is_exact_label_match(criterion.label, normalized_source):
+                return True
+            meaningful_words = [
+                word
+                for word in re.findall(r"\w+", criterion.label.casefold())
+                if len(word) >= 3 and not word.isdigit() and word not in generic_words
+            ]
+            return bool(meaningful_words) and all(appears_in_source(word) for word in meaningful_words)
 
         return [criterion for criterion in criteria if is_grounded(criterion)]
 
