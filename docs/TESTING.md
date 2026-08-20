@@ -21,14 +21,14 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **103 test**, 16 dosyada:
+Toplam **105 test**, 16 dosyada:
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
 | `test_pdf_parser.py` | 16 | 6 doğrulama senaryosu (boş/imza/bozuk/şifreli/sayfasız/metinsiz), farklı layout'lar (tek sütun, iki sütun, çok sayfa, tablo), kırpma sınırı ve tam-sınır durumu |
 | `test_criteria_service.py` | 12 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı, intent modeli override'ı, şema hatasında sohbete düşme |
 | `test_models.py` | 8 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
-| `test_sqlite_repo.py` | 7 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
+| `test_sqlite_repo.py` | 9 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
 | `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
 | `test_cv_analysis_service.py` | 8 | Kriter kimliği zorlaması, ham metnin evaluator'a sızmaması, batch context bütçesi |
 | `test_openai_compatible_client.py` | 6 | LM Studio/vLLM uyumlu istemci, `response_format` sözleşmesi, retry, Bearer token |
@@ -81,7 +81,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  103 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  105 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 
