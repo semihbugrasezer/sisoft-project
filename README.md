@@ -202,10 +202,11 @@ tavsiyeleri ve genel değerlendirme içeren Markdown rapor.
 pip install -r requirements-dev.txt   # pytest, ruff, mypy — çalışma zamanı için gerekmez
 python -m pytest tests/ -v
 ruff check app main.py tests scripts
+mypy app main.py
 ```
 
 Ortalama hesaplama, top-3 sıralama, PDF doğrulama, kriter çıkarımı, sohbet
-bağlamı ve Telegram handler'ları için 79 birim/entegrasyon testi içerir.
+bağlamı ve Telegram handler'ları için 80 birim/entegrasyon testi içerir.
 Ayrıca gerçek yerel model sunuculara (Ollama, LM Studio) karşı canlı testlerle
 doğrulandı — bkz. [docs/VALIDATION.md](docs/VALIDATION.md).
 
@@ -232,10 +233,26 @@ python scripts/generate_invalid_cvs.py   # mock_cvs/invalid/ altına 4 geçersiz
 
 Sohbet geçmişi, özetler ve kriterler SQLite'ta düz metin olarak tutulur.
 `/batch` akışıyla yüklenen CV'ler işlenene kadar geçici olarak SQLite'a
-yazılır ve `/analyze` tamamlanır tamamlanmaz silinir (albüm/tekli yükleme
-hiç diske yazılmaz, doğrudan bellekte işlenir). Bu bir demo/mülakat
-projesidir: **encryption-at-rest yoktur**; gerçek İK verisiyle üretimde
-kullanılmadan önce uygun bir veri saklama ve şifreleme politikası eklenmelidir.
+yazılır; analiz başarılı da olsa hata da verse `/analyze` içindeki
+`try/finally` bloğu bunları her durumda siler (albüm/tekli yükleme hiç
+diske yazılmaz, doğrudan bellekte işlenir). Bu bir demo/mülakat projesidir:
+**encryption-at-rest yoktur**; gerçek İK verisiyle üretimde kullanılmadan
+önce uygun bir veri saklama ve şifreleme politikası eklenmelidir.
+
+## Branch ve PR Politikası
+
+`main` korunan branch'tir (CI + 1 onay zorunlu). Kalıcı bir `development`
+branch kullanılmaz — her değişiklik kısa ömürlü bir branch'te geliştirilir
+(`feat/*`, `fix/*`, `docs/*`, `chore/*`), PR ile `main`e açılır ve
+onaylandığında GitHub'ın native auto-merge özelliğiyle squash-merge edilir:
+
+```bash
+git switch -c fix/example
+# değişiklik, test, commit
+git push -u origin fix/example
+gh pr create --base main
+gh pr merge --auto --squash   # onay + CI tamamlanınca otomatik merge olur
+```
 
 ## Detaylı Dokümantasyon
 
