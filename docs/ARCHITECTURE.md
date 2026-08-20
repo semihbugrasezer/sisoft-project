@@ -1,8 +1,8 @@
 # Mimari
 
-Katmanlı mimari, bağımlılıklar tek yönde akar. Genel bakış ve diyagramlar için
-önce [README.md](../README.md)'ye bakın — burada dosya haritası ve katman
-sorumlulukları daha ayrıntılı anlatılıyor.
+Katmanlı mimari, bağımlılıklar tek yönde akar. Bu doküman dosya haritasını,
+katman sorumluluklarını ve istek akışını ayrıntılı anlatır — hızlı bir görsel
+özet için [README.md](../README.md#mimari)'deki iki diyagrama da bakılabilir.
 
 ## Katmanlar ve Dosyalar
 
