@@ -187,3 +187,53 @@ def test_blank_or_duplicate_criteria_are_rejected():
                 Criterion(id="react", label="Clean Code", description="x"),
             ]
         )
+
+
+class FakeIntentFailsThenMainWorks:
+    """Küçük intent modeli şema hatası verir; ana model (model=None) başarır."""
+
+    def __init__(self):
+        self.models_tried = []
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.models_tried.append(model)
+        if model is not None:
+            raise LLMOutputValidationError("küçük model şema üretemedi")
+        return CriteriaIntentResult(
+            intent="criteria",
+            criteria=[Criterion(id="react", label="React tecrübesi", description="x")],
+        )
+
+
+@pytest.mark.asyncio
+async def test_intent_failure_retries_with_main_model_before_falling_back_to_chat():
+    # Sessiz hata regresyonu: küçük intent modeli JSON üretemezse mesaj doğrudan
+    # "chat" sayılıyordu ve kullanıcının kriter tanımı sessizce kayboluyordu.
+    llm = FakeIntentFailsThenMainWorks()
+    criteria = await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert llm.models_tried == ["tiny", None], "ana modelle tekrar denenmedi"
+    assert criteria is not None and criteria[0].label == "React tecrübesi"
+
+
+class FakeAlwaysFailsIntent:
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        raise LLMOutputValidationError("şema hatası")
+
+
+@pytest.mark.asyncio
+async def test_intent_failure_on_both_models_falls_back_to_chat():
+    # İki bağımsız deneme de başarısızsa sohbete düşmek en az zararlı davranış.
+    llm = FakeAlwaysFailsIntent()
+    result = await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
+        1, "merhaba"
+    )
+
+    assert result is None
+    assert llm.calls == 2, "ana model denenmeden sohbete düşüldü"

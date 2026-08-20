@@ -153,6 +153,13 @@ sonra kısa bir sessizlik, grubun tamamlandığı anlamına gelir. Limit dolduğ
 Bu, `asyncio` task'ı olarak çalışır (`context.application.create_task`), yani
 toplama süreci de Telegram akışını bloklamaz.
 
+Grup işlendikten sonra **kapatılır** (`pop` grubu sınırlı kapasiteli bir
+"kapalı gruplar" kaydına ekler). Aksi halde Telegram'dan geç gelen bir update —
+örneğin limit dolduğu için hemen işlenen 5 dosyalık albümün 6. dosyası — sözlükte
+artık bulunmayan grup için `setdefault` ile yeni bir arabellek yaratır ve ayrı bir
+batch gibi işlenirdi. Regresyon testi:
+`test_late_file_after_group_is_processed_is_rejected`.
+
 ## Zaman Aşımı
 
 `LLM_TIMEOUT` (varsayılan 1200s) tek bir LLM isteğinin üst sınırıdır. Canlı

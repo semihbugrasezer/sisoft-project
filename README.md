@@ -36,7 +36,7 @@ canlı çalıştırılan 5 CV'lik toplu analiz — top-3 JSON çıktısı, ödev
 | Bağlamı koruyan sohbet | Sıcak pencere (40 mesaj) + rolling summary |
 | Dinamik kriter tanımlama | Yapılandırılmış LLM çıkarımı, komut gerekmez |
 | PDF doğrulama | Bozuk / şifreli / okunamaz / geçersiz belge reddi |
-| CV normalizasyonu | LLM Extraction → `CandidateProfile` (Pydantic) |
+| CV normalizasyonu | LLM Extraction → `CandidateProfile` (Pydantic) + aday adı kaynak metne karşı doğrulanır |
 | Tekli CV analizi | Kriter skorları + güçlü/zayıf yönler + tavsiyeler |
 | Çoklu CV sıralama | En fazla 5 CV → deterministik top-3 JSON |
 | Kilitlenmeyen altyapı | Batch işlenirken bot yanıt vermeye devam eder |
@@ -172,7 +172,7 @@ ruff check app main.py tests scripts
 mypy app main.py
 ```
 
-90 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
+103 birim/entegrasyon testi (taklit LLM ile) ve gerçek model sunucularına karşı
 canlı koşular. Ayrıntı: **[docs/TESTING.md](docs/TESTING.md)**,
 **[docs/VALIDATION.md](docs/VALIDATION.md)**.
 

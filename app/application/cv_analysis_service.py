@@ -13,6 +13,7 @@ import logging
 import time
 
 from app.domain.errors import LLMOutputValidationError
+from app.domain.grounding import is_grounded_in_source
 from app.domain.models import (
     BatchCandidateEvaluation,
     BatchEvaluationResult,
@@ -79,6 +80,7 @@ class CVAnalysisService:
         profile = await self._llm.structured_chat(
             CV_EXTRACTOR_SYSTEM, f"SOURCE_TEXT:\n{text}", CandidateProfile
         )
+        profile = await self._ground_candidate_name(profile, text)
 
         criteria_json = "\n".join(
             f"- id={c.id}; label={c.label}; description={c.description}" for c in criteria
@@ -93,6 +95,41 @@ class CVAnalysisService:
         )
 
         return profile, self._normalize_evaluation(evaluation, criteria)
+
+    async def _ground_candidate_name(
+        self, profile: CandidateProfile, source_text: str
+    ) -> CandidateProfile:
+        """`candidateName` kaynak metinde geçmiyorsa bir kez düzeltme turu dener;
+        yine tutmazsa alanı None yapar.
+
+        Gerekçe: canlı testte model Türkçe aksanlı bir ismi bozdu ("Buğra" →
+        "Bügüra"). Bozuk bir adı sessizce kabul etmek, uydurulmuş veriyi rapora
+        taşımak demektir. None dönmek güvenlidir çünkü çağıranlar zaten dosya adına
+        düşer (`profile.candidateName or filename`)."""
+        if profile.candidateName is None:
+            return profile  # model zaten "ad yok" demiş — uydurma riski yok
+        if is_grounded_in_source(profile.candidateName, source_text):
+            return profile
+
+        logger.warning(
+            "candidateName kaynak metinde bulunamadı (%r) — düzeltme turu deneniyor",
+            profile.candidateName,
+        )
+        retried = await self._llm.structured_chat(
+            CV_EXTRACTOR_SYSTEM
+            + " DÜZELTME: candidateName alanı SOURCE_TEXT içinde birebir geçen bir"
+            " ifade olmalıdır; harf değiştirme/tahmin yapma. Ad gerçekten yoksa null yaz.",
+            f"SOURCE_TEXT:\n{source_text}",
+            CandidateProfile,
+        )
+        if is_grounded_in_source(retried.candidateName, source_text):
+            return retried
+
+        logger.warning(
+            "candidateName ikinci denemede de doğrulanamadı (%r) — None'a çekiliyor",
+            retried.candidateName,
+        )
+        return retried.model_copy(update={"candidateName": None})
 
     @staticmethod
     def fit_batch_budget(texts: list[str]) -> tuple[list[str], list[int]]:
@@ -154,6 +191,20 @@ class CVAnalysisService:
         profiles_by_id = self._items_by_document_id(
             profiles_result.candidates, len(texts)
         )
+        # Batch'te düzeltme turu yapmıyoruz: tek bir bozuk ad için 5 CV'lik
+        # extraction'ı (dakikalar) tekrarlamak orantısız olurdu. Doğrulanamayan ad
+        # None'a çekilir; BatchAnalysisService zaten dosya adına düşer.
+        for document_id, item in profiles_by_id.items():
+            if item.profile.candidateName is not None and not is_grounded_in_source(
+                item.profile.candidateName, fitted_texts[document_id]
+            ):
+                logger.warning(
+                    "documentId=%d: candidateName kaynak metinde yok (%r) — None'a çekiliyor",
+                    document_id, item.profile.candidateName,
+                )
+                profiles_by_id[document_id] = item.model_copy(
+                    update={"profile": item.profile.model_copy(update={"candidateName": None})}
+                )
 
         normalized_profiles = [
             {

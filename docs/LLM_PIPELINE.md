@@ -92,6 +92,13 @@ Bu, modelin kanıt göstermeden yüksek puan vermesini (yaygın bir hallüsinasy
 biçimi) şema seviyesinde engeller. Fırlayan `ValidationError` yukarıdaki retry
 mekanizmasını tetikler — ayrı bir mekanizma gerekmez.
 
+Aynı mantık `candidateName` için de uygulanır: Pydantic alanın *string* olduğunu
+doğrular ama *doğru* olduğunu doğrulayamaz. `is_grounded_in_source`
+(`app/domain/grounding.py`) adın kaynak metinde gerçekten geçtiğini kelime bazlı
+kontrol eder; geçmiyorsa bir düzeltme turu denenir, yine tutmazsa alan `None`'a
+çekilir (çağıran dosya adına düşer). Bu, canlı koşuda gözlenen aksanlı-isim
+bozulmasını yakalar (bkz. [VALIDATION.md](./VALIDATION.md) koşu #6).
+
 Benzer şekilde `_normalize_scores`, modelin kriter kimliklerini uydurmadığını
 veya atlamadığını doğrular: dönen `criterionId` kümesi tanımlı kriterlerle
 birebir eşleşmiyorsa çıktı reddedilir. `criterionLabel` her zaman kullanıcının
@@ -129,6 +136,12 @@ uydurması engellenir. Ayrıca etiketlerden biri kullanıcının ifadesinin bire
 kopyası değilse (parafraz) bir düzeltme turu daha çalışır
 (`_all_labels_exact`) — ödev PDF'indeki örnek JSON kullanıcının kendi
 ifadesinin yansıtılmasını bekliyor.
+
+Niyet sınıflandırması şemaya uygun JSON üretemezse mesaj doğrudan "chat"
+sayılmaz — bu, kullanıcının kriter tanımını sessizce kaybetmek olurdu. Önce
+ana modelle tekrar denenir (isteğe bağlı `LLM_INTENT_MODEL` yapılandırılmışsa
+sorun büyük olasılıkla onun kapasitesidir, bkz. VALIDATION.md koşu #5); iki
+bağımsız deneme de başarısız olursa sohbete düşülür ve durum loglanır.
 
 Anahtar kelime tabanlı bir kısayol (örn. "kriter/skorla" kelimeleri yoksa
 LLM'e hiç gitme) denenip **reddedildi**: "React tecrübesi benim için önemli"

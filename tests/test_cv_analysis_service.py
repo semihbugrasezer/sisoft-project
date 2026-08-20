@@ -113,7 +113,7 @@ class FakeBatchLLM:
 @pytest.mark.asyncio
 async def test_evaluation_uses_and_enforces_criterion_identity():
     llm = FakeLLM("react")
-    _, evaluation = await CVAnalysisService(llm).analyze_from_text("CV metni", CRITERIA)
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada Lovelace — CV metni", CRITERIA)
 
     assert "id=react" in llm.prompts[1]
     assert evaluation.scores[0].criterionLabel == "React tecrübesi"
@@ -122,7 +122,9 @@ async def test_evaluation_uses_and_enforces_criterion_identity():
 @pytest.mark.asyncio
 async def test_evaluation_rejects_missing_or_invented_criterion():
     with pytest.raises(LLMOutputValidationError):
-        await CVAnalysisService(FakeLLM("invented")).analyze_from_text("CV metni", CRITERIA)
+        await CVAnalysisService(FakeLLM("invented")).analyze_from_text(
+            "Ada Lovelace — CV metni", CRITERIA
+        )
 
 
 @pytest.mark.asyncio
@@ -166,3 +168,46 @@ def test_batch_budget_redistributes_unused_share_to_long_documents():
     assert fitted[0] == texts[0]  # kısa belge dokunulmadan kalır
     half = MAX_BATCH_EXTRACTED_CHARS // 2
     assert len(fitted[1]) > half  # artan pay uzun belgeye aktarıldı
+
+
+class FakeCorruptingLLM:
+    """İlk extraction'da adı bozar (canlı koşuda gözlenen davranış), düzeltme
+    turunda doğru adı verir."""
+
+    def __init__(self, fix_on_retry: bool = True):
+        self.fix_on_retry = fix_on_retry
+        self.extraction_calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        if response_model is CandidateProfile:
+            self.extraction_calls += 1
+            correct = self.extraction_calls > 1 and self.fix_on_retry
+            return CandidateProfile(
+                candidateName="Semih Buğra Sezer" if correct else "Semhi Bügüra Sezer",
+                contact={}, summary=None, skills=[], workExperiences=[],
+                education=[], languages=[],
+            )
+        return _evaluation()
+
+
+SOURCE_WITH_NAME = "Semih Buğra Sezer\nYazılım Geliştirici\nReact"
+
+
+@pytest.mark.asyncio
+async def test_corrupted_candidate_name_triggers_retry_and_is_fixed():
+    llm = FakeCorruptingLLM(fix_on_retry=True)
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(SOURCE_WITH_NAME, CRITERIA)
+
+    assert llm.extraction_calls == 2, "grounding düzeltme turunu tetiklemeliydi"
+    assert profile.candidateName == "Semih Buğra Sezer"
+
+
+@pytest.mark.asyncio
+async def test_still_ungrounded_name_falls_back_to_none():
+    # Düzeltme turu da bozuk ad dönerse uydurma veriyi rapora taşımak yerine
+    # None'a çekilir; çağıranlar dosya adına düşer.
+    llm = FakeCorruptingLLM(fix_on_retry=False)
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(SOURCE_WITH_NAME, CRITERIA)
+
+    assert llm.extraction_calls == 2
+    assert profile.candidateName is None
