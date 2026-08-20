@@ -55,8 +55,8 @@ app/
 │
 ├── infrastructure/         Dış dünya adaptörleri
 │   ├── llm/
-│   │   ├── ollama_client.py            Ollama'nın /api/chat'i (LLMPort uygular)
-│   │   ├── openai_compatible_client.py /v1/chat/completions (LM Studio/vLLM, LLMPort uygular)
+│   │   ├── ollama_client.py            Ollama /api/chat (qwen2.5:7b)
+│   │   ├── openai_compatible_client.py /v1/chat/completions — LM Studio (gemma-4-e4b), vLLM
 │   │   └── prompts.py                  Sistem prompt'ları
 │   ├── pdf/pymupdf_parser.py           PDF doğrulama + metin çıkarma
 │   └── persistence/sqlite_repo.py      Sohbet geçmişi, kriter, pending-file kalıcılığı
@@ -129,7 +129,7 @@ sequenceDiagram
     participant H as handlers.py
     participant CVS as CVAnalysisService
     participant PDF as pymupdf_parser
-    participant LLM as LLMPort (Ollama/OpenAI-uyumlu)
+    participant LLM as LLMPort (Ollama veya LM Studio/vLLM)
 
     U->>H: PDF gönder
     H->>CVS: analyze(pdf_bytes, criteria)
