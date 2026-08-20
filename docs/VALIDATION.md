@@ -163,6 +163,13 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
   kararı. PDF validation/extraction paraleldir; LLM extraction/evaluation
   tüm belgeler için tek bir toplu istektir (tek yerel model sunucusunu N ayrı
   istekle boğmamak için bilinçli tercih).
+- **Nitel rapor alanları boş kalabiliyor** — kabul testinin (`scripts/validate_assignment.py`)
+  ilk koşusunda `qwen2.5:7b`, kriterlerin üçünü de doğru puanladığı hâlde
+  `strengths`/`weaknesses`/`recommendations` bölümlerinden en az birini boş
+  bıraktı. Prompt bu alanları açıkça istiyor; şema da boş listeye izin veriyor
+  (bir aday için gerçekten zayıf yön olmayabilir), dolayısıyla bu bir kod hatası
+  değil model kalitesi sınırıdır. Kabul testi bunu artık ölçüyor ve hangi alanın
+  boş kaldığını raporluyor.
 - **Aksanlı isimlerde model bozulması** — 7B model Türkçe aksanlı bir ismi
   kopyalarken harf değiştirebiliyor. Kod tarafında kaynak-doğrulama +
   düzeltme turu ile ele alındı (koşu #6); modelin kendisi düzelmedi.
