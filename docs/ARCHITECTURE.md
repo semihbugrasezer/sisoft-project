@@ -30,8 +30,8 @@ Application ──────────────┐
 ```
 
 Bu bilinçli bir tercihtir: `LLMPort` gerçek bir ihtiyaca dayanır — iki farklı
-implementasyon (`OllamaClient`, `OpenAICompatibleClient`) vardır ve ödev üç
-farklı LLM motorunu desteklemeyi şart koşar. Buna karşılık SQLite ve PDF
+implementasyon (`OllamaClient`, `OpenAICompatibleClient`) fiilen vardır ve
+motor değişimi bir yapılandırma sorunudur. Buna karşılık SQLite ve PDF
 parser için tek implementasyon vardır; onlara resmî bir arayüz eklemek bu
 ölçekte karşılıksız bir soyutlama olurdu. Testler yine de izoledir: Python'da
 duck typing sayesinde sahte (fake) nesneler ayrı bir soyut sınıf tanımlamadan
@@ -104,6 +104,8 @@ Application / Infrastructure                │
       │     "Model şu anda yanıt vermiyor…" │    reply(exc.user_message)
       ├── LLMOutputValidationError          │
       │     (tek retry sonrası)             │
+      ├── IntentUndecidableError            │
+      │     "Kriter mi sohbet mi …"         │
       └── NoCriteriaDefinedError            │
             "Önce kriter tanımlamalısınız…" │
                                             │
@@ -147,6 +149,29 @@ biter, sonra tamamı reddedilir) ve LLM extraction/
 evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
 çalıştırır — bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Batch başına
 iki LLM çağrısı".
+
+## LLM Backend'leri
+
+Ödev **"Ollama, vLLM veya LM Studio entegrasyonu sağlanmalıdır"** diyor — yani
+bunlardan **en az biri** yeterli. Bu proje zorunlu kapsamın ötesine geçip
+üçünü de destekler; ikisi tek adaptörle karşılanır:
+
+| Motor | Adaptör | Uç | Durum |
+|---|---|---|---|
+| Ollama | `OllamaClient` | `/api/chat` (Ollama'ya özgü) | `qwen2.5:7b` ile canlı doğrulandı |
+| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | `google/gemma-4-e4b` ile canlı doğrulandı |
+| vLLM | `OpenAICompatibleClient` | `/v1/chat/completions` | Aynı protokol; donanım kısıtı nedeniyle canlı test edilmedi |
+
+**"OpenAI-uyumlu" bir protokol adıdır, servis adı değil.** HTTP biçimini
+OpenAI'ın API'si popülerleştirdiği için bu adla anılır; LM Studio ve vLLM kendi
+sunucularını bu biçimde sunar. Proje OpenAI servisine bağlanmaz — `openai`
+paketi bağımlılık değildir ve istekler `LLM_BASE_URL`'in gösterdiği sunucuya
+(varsayılan: `localhost`) gider. Tek adaptörün iki motoru birden karşılamasının
+nedeni ikisinin de aynı protokolü paylaşmasıdır; ayrı `LMStudioClient` ve
+`VLLMClient` yazmak aynı kodu iki kez yazmak olurdu.
+
+Uzak bir uç yapılandırılırsa CV içeriği o sunucuya gönderilir — bkz.
+[SECURITY.md](../SECURITY.md).
 
 ## Eşzamanlılık
 

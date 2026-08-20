@@ -137,11 +137,14 @@ kopyası değilse (parafraz) bir düzeltme turu daha çalışır
 (`_all_labels_exact`) — ödev PDF'indeki örnek JSON kullanıcının kendi
 ifadesinin yansıtılmasını bekliyor.
 
-Niyet sınıflandırması şemaya uygun JSON üretemezse mesaj doğrudan "chat"
-sayılmaz — bu, kullanıcının kriter tanımını sessizce kaybetmek olurdu. Önce
-ana modelle tekrar denenir (isteğe bağlı `LLM_INTENT_MODEL` yapılandırılmışsa
-sorun büyük olasılıkla onun kapasitesidir, bkz. VALIDATION.md koşu #5); iki
-bağımsız deneme de başarısız olursa sohbete düşülür ve durum loglanır.
+Niyet sınıflandırması şemaya uygun JSON üretemezse mesaj **"chat" sayılmaz** —
+bu, kullanıcının kriter tanımını sessizce kaybetmek olurdu ve kullanıcı bunu
+ancak CV gönderdiğinde fark ederdi. Önce ana modelle tekrar denenir (isteğe
+bağlı `LLM_INTENT_MODEL` yapılandırılmışsa sorun büyük olasılıkla onun
+kapasitesidir, bkz. VALIDATION.md koşu #5); o da başarısız olursa
+`IntentUndecidableError` fırlatılır ve kullanıcı ne yapacağını söyleyen bir
+mesaj görür (`/criteria` ile açıkça tanımlayabilir). Sessiz yanlış-mod yerine
+açık hata.
 
 Anahtar kelime tabanlı bir kısayol (örn. "kriter/skorla" kelimeleri yoksa
 LLM'e hiç gitme) denenip **reddedildi**: "React tecrübesi benim için önemli"

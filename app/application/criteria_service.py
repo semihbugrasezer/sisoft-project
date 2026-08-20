@@ -4,7 +4,11 @@ from __future__ import annotations
 import logging
 import re
 
-from app.domain.errors import LLMOutputValidationError, NoCriteriaDefinedError
+from app.domain.errors import (
+    IntentUndecidableError,
+    LLMOutputValidationError,
+    NoCriteriaDefinedError,
+)
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.domain.ports import LLMPort
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
@@ -62,6 +66,11 @@ class CriteriaService:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
         return await self._save(chat_id, criteria)
 
+    @staticmethod
+    def _intent_undecidable(cause: LLMOutputValidationError) -> IntentUndecidableError:
+        logger.warning("Intent sınıflandırması başarısız, kullanıcıya hata dönülüyor: %s", cause)
+        return IntentUndecidableError(str(cause))
+
     async def define_if_requested(
         self, chat_id: int, free_text: str
     ) -> list[Criterion] | None:
@@ -69,35 +78,31 @@ class CriteriaService:
             result = await self._llm.structured_chat(
                 CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult, model=self._intent_model
             )
-        except LLMOutputValidationError:
+        except LLMOutputValidationError as first_error:
             # Niyet sınıflandırması şemaya uygun JSON üretemedi. Canlı testte zayıf
             # bir modelle (0.5B) gerçekleşti — bkz. docs/VALIDATION.md koşu #5.
-            # Doğrudan "chat" varsaymak SESSİZ bir hata olurdu: kullanıcının kriter
-            # tanımı sohbet mesajı gibi yanıtlanır ve kriterler hiç kaydedilmez.
-            # Bu yüzden önce ANA modelle tekrar denenir (isteğe bağlı küçük intent
-            # modeli yapılandırılmışsa, sorun büyük olasılıkla onun kapasitesidir).
-            if self._intent_model is None:
+            #
+            # Burada "chat" varsaymak SESSİZ bir hatadır: kullanıcının kriter tanımı
+            # sıradan bir sohbet mesajı gibi yanıtlanır, kriterler kaydedilmez ve
+            # kullanıcı bunu ancak CV gönderdiğinde fark eder. Dinamik kriter
+            # yakalama ödevin çekirdek gereksinimi olduğu için sessiz yanlış-mod
+            # yerine açık hata tercih edilir.
+            #
+            # İsteğe bağlı küçük bir intent modeli yapılandırılmışsa önce ANA modelle
+            # denenir — sorun büyük olasılıkla küçük modelin kapasitesidir.
+            if self._intent_model is not None:
                 logger.warning(
-                    "Intent sınıflandırması şema hatası verdi (ana model), "
-                    "mesaj chat olarak işleniyor"
+                    "Intent sınıflandırması şema hatası verdi (%s), ana modelle tekrar deneniyor",
+                    self._intent_model,
                 )
-                return None
-            logger.warning(
-                "Intent sınıflandırması şema hatası verdi (%s), ana modelle tekrar deneniyor",
-                self._intent_model,
-            )
-            try:
-                result = await self._llm.structured_chat(
-                    CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult
-                )
-            except LLMOutputValidationError:
-                # Ana model de sınıflandıramadı. Burada sohbete düşmek hâlâ en az
-                # zararlı davranıştır (kullanıcı `/criteria` ile açıkça tanımlayabilir),
-                # ama artık iki bağımsız denemeden sonra ve açıkça loglanarak.
-                logger.warning(
-                    "Intent sınıflandırması ana modelde de başarısız, mesaj chat olarak işleniyor"
-                )
-                return None
+                try:
+                    result = await self._llm.structured_chat(
+                        CRITERIA_INTENT_SYSTEM, free_text, CriteriaIntentResult
+                    )
+                except LLMOutputValidationError as second_error:
+                    raise self._intent_undecidable(second_error) from second_error
+            else:
+                raise self._intent_undecidable(first_error) from first_error
         if result.intent == "chat":
             return None
         criteria = self._grounded_criteria(result.criteria, free_text)

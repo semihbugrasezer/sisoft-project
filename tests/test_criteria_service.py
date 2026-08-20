@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.application.criteria_service import CriteriaService
-from app.domain.errors import LLMOutputValidationError
+from app.domain.errors import IntentUndecidableError, LLMOutputValidationError
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
 
@@ -162,19 +162,23 @@ async def test_define_if_requested_defaults_to_main_model_when_unconfigured():
 
 
 @pytest.mark.asyncio
-async def test_define_if_requested_falls_back_to_chat_when_intent_schema_invalid():
-    # Zayıf modellerde (canlı testte 0.5B) intent-classification iki denemede de şemaya
-    # uygun JSON üretemeyebilir. Kullanıcıyı hata mesajıyla çıkmaza sokmak yerine
-    # mesajı chat olarak ele almalıyız (bkz. README.md → Teknik Altyapı).
+async def test_define_if_requested_raises_explicit_error_when_intent_undecidable():
+    # Zayıf modellerde (canlı testte 0.5B) intent-classification şemaya uygun JSON
+    # üretemeyebilir. Mesajı sessizce "chat" saymak, kullanıcının kriter tanımını
+    # kaybetmek olurdu ve kullanıcı bunu ancak CV gönderdiğinde fark ederdi —
+    # dinamik kriter yakalama ödevin çekirdek gereksinimi. Açık hata + yönlendirme
+    # tercih edilir.
     class FailingIntentLLM:
         async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
             raise LLMOutputValidationError("Model beklenen formatta yanıt üretemedi.")
 
-    result = await CriteriaService(FailingIntentLLM(), FakeRepo()).define_if_requested(
-        1, "merhaba nasılsın"
-    )
+    with pytest.raises(IntentUndecidableError) as exc_info:
+        await CriteriaService(FailingIntentLLM(), FakeRepo()).define_if_requested(
+            1, "React tecrübesi benim için önemli"
+        )
 
-    assert result is None
+    # Kullanıcı ne yapacağını bilmeli
+    assert "/criteria" in exc_info.value.user_message
 
 
 def test_blank_or_duplicate_criteria_are_rejected():
@@ -228,12 +232,13 @@ class FakeAlwaysFailsIntent:
 
 
 @pytest.mark.asyncio
-async def test_intent_failure_on_both_models_falls_back_to_chat():
-    # İki bağımsız deneme de başarısızsa sohbete düşmek en az zararlı davranış.
+async def test_intent_failure_on_both_models_raises_explicit_error():
+    # Küçük model başarısız olunca ana model denenir; o da başarısızsa sessizce
+    # sohbete düşmek yerine açık hata dönülür.
     llm = FakeAlwaysFailsIntent()
-    result = await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
-        1, "merhaba"
-    )
+    with pytest.raises(IntentUndecidableError):
+        await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
+            1, "merhaba"
+        )
 
-    assert result is None
-    assert llm.calls == 2, "ana model denenmeden sohbete düşüldü"
+    assert llm.calls == 2, "ana model denenmeden hata dönüldü"
