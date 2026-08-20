@@ -40,7 +40,7 @@ planda **Ollama**, **LM Studio** veya **vLLM**'den herhangi biriyle çalışabil
 | Genel sohbet, bağlam korunması | `ChatService` + SQLite (sıcak pencere + rolling summary) |
 | Serbest metinden dinamik kriter | `CriteriaService`, yapılandırılmış LLM çıktısı |
 | Tekli CV detaylı analiz (strengths/weaknesses/recommendations) | `CVAnalysisService` → `EvaluationResult` → Markdown rapor |
-| PDF doğrulama (bozuk/şifreli/okunamaz) | `pymupdf_parser.py`, 5 ayrı hata sınıfı |
+| PDF doğrulama (bozuk/şifreli/okunamaz) | `pymupdf_parser.py`, sırayla doğrulanan 6 senaryo (boş/imza/açılamayan/şifreli/sayfasız/metinsiz), tek `PDFValidationError` |
 | LLM Extraction → ortak JSON şeması | `CandidateProfile` (`extra="forbid"`) |
 | Skorlama/filtreleme yalnızca ortak JSON üzerinden | evaluator prompt'u yalnızca `profile.model_dump_json()` alır |
 | En fazla 5 CV, asenkron/paralel işleme | `MAX_CV_COUNT=5`, PDF validation `asyncio.gather` ile paralel |

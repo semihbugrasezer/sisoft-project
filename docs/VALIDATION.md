@@ -51,12 +51,12 @@ hızından gelir. Aşağıdaki üç seçenek mimariyi bozmadan uygulanabilir; bu
 turda kapsam dışı bırakıldı.
 
 1. **Üretim ortamı: vLLM veya bulut GPU.** Dedicated GPU ve vLLM'in continuous
-   batching'i süreyi düşürür. Ama bu tek satırlık bir `base_url` değişikliği
-   değildir — vLLM'in OpenAI-uyumlu `/v1/chat/completions` kontratı,
-   `OllamaClient`'ın beklediği Ollama'ya özgü `/api/chat` biçiminden farklıdır.
-   Gerçek geçiş için aynı arayüzü (`chat`/`structured_chat`) implemente eden
-   ayrı bir `VLLMClient` adaptörü gerekir. `container.py` bunu tek satırda
-   değiştirilebilir kılacak şekilde hazırdır; adaptörün kendisi yazılmadı.
+   batching'i süreyi düşürür. Bunun için ayrı bir adaptör yazmaya gerek yok —
+   `OpenAICompatibleClient` zaten vLLM'in OpenAI-uyumlu `/v1/chat/completions`
+   kontratını konuşuyor (bkz. README.md → Teknoloji). Geçiş yalnızca
+   `LLM_BACKEND=openai_compatible` + sunucu adresi/model adı yapılandırmasıdır.
+   vLLM bu ortamda (Apple Silicon, GPU desteklemiyor) canlı test edilemedi;
+   protokol uyumluluğu resmi OpenAI-uyumlu API sözleşmesinden doğrulandı.
 2. **Daha küçük/hızlı model.** Genel modeli `phi3.5` veya `qwen2.5:3b` ile
    değiştirmek doğruluk/hız trade-off'u taşır ve canlı test edilmedi. Daha dar
    kapsamlı bir versiyonu uygulandı ve test edildi: intent-classification

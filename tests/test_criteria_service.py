@@ -1,8 +1,7 @@
 import pytest
-
-from app.application.criteria_service import CriteriaService
 from pydantic import ValidationError
 
+from app.application.criteria_service import CriteriaService
 from app.domain.errors import LLMOutputValidationError
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
 from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM

@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from app.domain.errors import LLMOutputValidationError
 from app.domain.models import (
-    BatchEvaluationResult,
     BatchCandidateEvaluation,
+    BatchEvaluationResult,
     BatchProfileResult,
     CandidateProfile,
     Criterion,
@@ -81,16 +82,22 @@ class CVAnalysisService:
     async def analyze_batch_from_texts(
         self, texts: list[str], criteria: list[Criterion]
     ) -> list[tuple[CandidateProfile, BatchCandidateEvaluation]]:
+        # İki toplu LLM çağrısının süresi loglanır — batch tek yerel model
+        # sunucusunda dakikalar sürebilir (bkz. docs/VALIDATION.md); bir isteğin
+        # gerçekten ilerlediğini mi yoksa takılı mı kaldığını ayırt etmek için.
         documents = [
             {"documentId": document_id, "sourceText": text}
             for document_id, text in enumerate(texts)
         ]
+        logger.info("Batch extraction başlıyor (%d belge)", len(texts))
+        t0 = time.monotonic()
         profiles_result = await self._llm.structured_chat(
             CV_EXTRACTOR_SYSTEM
             + " Birden fazla belge verildiğinde her documentId için tam fakat öz bir profil üret.",
             "DOCUMENTS (JSON):\n" + json.dumps(documents, ensure_ascii=False),
             BatchProfileResult,
         )
+        logger.info("Batch extraction bitti (%.1fs)", time.monotonic() - t0)
         profiles_by_id = self._items_by_document_id(
             profiles_result.candidates, len(texts)
         )
@@ -103,6 +110,8 @@ class CVAnalysisService:
             for document_id in range(len(texts))
         ]
         criteria_data = [criterion.model_dump(mode="json") for criterion in criteria]
+        logger.info("Batch evaluation başlıyor (%d belge)", len(texts))
+        t0 = time.monotonic()
         evaluations_result = await self._llm.structured_chat(
             CANDIDATE_EVALUATOR_SYSTEM
             + " Birden fazla profil verildiğinde her documentId için bir değerlendirme üret.",
@@ -113,6 +122,7 @@ class CVAnalysisService:
             + "\n\nHer documentId ile criterionId değerini birebir koru.",
             BatchEvaluationResult,
         )
+        logger.info("Batch evaluation bitti (%.1fs)", time.monotonic() - t0)
         evaluations_by_id = self._items_by_document_id(
             evaluations_result.candidates, len(texts)
         )

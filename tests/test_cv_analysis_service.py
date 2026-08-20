@@ -3,9 +3,9 @@ import pytest
 from app.application.cv_analysis_service import CVAnalysisService
 from app.domain.errors import LLMOutputValidationError
 from app.domain.models import (
+    BatchCandidateEvaluation,
     BatchEvaluationItem,
     BatchEvaluationResult,
-    BatchCandidateEvaluation,
     BatchProfileItem,
     BatchProfileResult,
     CandidateProfile,
