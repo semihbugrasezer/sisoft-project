@@ -2,15 +2,31 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:
   contents: read
 
+# Aynı PR'a yeni commit gelince önceki koşuyu iptal et — gereksiz runner
+# kullanımını ve "hangi koşu geçerli?" belirsizliğini önler.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: test (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.13"
+          - "3.14"
 
     steps:
       - name: Checkout
@@ -19,7 +35,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
