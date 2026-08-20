@@ -210,12 +210,12 @@ class FakeIntentFailsThenMainWorks:
 
 
 @pytest.mark.asyncio
-async def test_intent_failure_retries_with_main_model_before_falling_back_to_chat():
+async def test_intent_failure_retries_with_main_model():
     # Sessiz hata regresyonu: küçük intent modeli JSON üretemezse mesaj doğrudan
     # "chat" sayılıyordu ve kullanıcının kriter tanımı sessizce kayboluyordu.
     llm = FakeIntentFailsThenMainWorks()
     criteria = await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
-        1, "React tecrübesine göre değerlendir"
+        1, "React tecrübesi benim için önemli"
     )
 
     assert llm.models_tried == ["tiny", None], "ana modelle tekrar denenmedi"
@@ -242,3 +242,36 @@ async def test_intent_failure_on_both_models_raises_explicit_error():
         )
 
     assert llm.calls == 2, "ana model denenmeden hata dönüldü"
+
+
+class FakeIntentParaphrasesThenExact:
+    """Intent çağrısı grounded ama PARAFRAZ etiket döner; define_criteria'nın
+    düzeltme turu birebir kopyayı verir."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        if response_model is CriteriaIntentResult:
+            return CriteriaIntentResult(
+                intent="criteria",
+                criteria=[Criterion(id="react", label="React deneyimi", description="x")],
+            )
+        label = "React deneyimi" if self.calls == 2 else "React tecrübesi"
+        return CriteriaExtractionResult(
+            criteria=[Criterion(id="react", label=label, description="x")]
+        )
+
+
+@pytest.mark.asyncio
+async def test_natural_language_path_also_enforces_verbatim_labels():
+    # Regresyon: birebir-etiket düzeltmesi yalnız /criteria yolunda çalışıyordu.
+    # Komutsuz (asıl) akış parafraz edilmiş etiketi doğrudan kaydediyordu.
+    llm = FakeIntentParaphrasesThenExact()
+    criteria = await CriteriaService(llm, FakeRepo()).define_if_requested(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert criteria is not None
+    assert criteria[0].label == "React tecrübesi", "parafraz etiket düzeltilmeden kaydedildi"

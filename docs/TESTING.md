@@ -21,13 +21,13 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **105 test**, 16 dosyada. (Test sayısının tek kaynağı bu
+Toplam **106 test**, 16 dosyada. (Test sayısının tek kaynağı bu
 dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 
 | Dosya | Test | Neyi doğrular |
 |---|---:|---|
 | `test_pdf_parser.py` | 16 | 6 doğrulama senaryosu (boş/imza/bozuk/şifreli/sayfasız/metinsiz), farklı layout'lar (tek sütun, iki sütun, çok sayfa, tablo), kırpma sınırı ve tam-sınır durumu |
-| `test_criteria_service.py` | 12 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı, intent modeli override'ı, şema hatasında sohbete düşme |
+| `test_criteria_service.py` | 13 | Serbest metinden kriter çıkarımı, grounding, birebir etiket retry'ı (hem `/criteria` hem doğal dil akışında), intent modeli override'ı, niyet belirlenemezse açık hata |
 | `test_models.py` | 8 | Pydantic şemaları, `extra="forbid"`, kanıtsız yüksek puan reddi, çıktı sözleşmesi sınırları (rank sıralılığı, skor aralığı, status) |
 | `test_sqlite_repo.py` | 9 | Kalıcılık, sohbet geçmişi, özet ilerlemesi, atomik pending-file ekleme (TOCTOU) |
 | `test_batch_analysis.py` | 7 | 5 CV limiti, all-or-nothing ön doğrulama, top-3 sözleşmesi, kırpma bilgisinin JSON şemasını kirletmemesi |
@@ -70,7 +70,8 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 | `test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles` | Ham CV metninin evaluator prompt'una sızmaması (ödevin çekirdek şartı) |
 | `test_model_corrupted_turkish_name_is_rejected` / `test_corrupted_candidate_name_triggers_retry_and_is_fixed` | Canlı koşuda model Türkçe aksanlı ismi bozdu; bozuk ad sessizce rapora giriyordu |
 | `test_late_file_after_group_is_processed_is_rejected` | 5 dosya dolup grup işlendikten sonra geç gelen 6. update yeni bir batch başlatabiliyordu |
-| `test_intent_failure_retries_with_main_model_before_falling_back_to_chat` | Küçük intent modeli JSON üretemeyince kullanıcının kriter tanımı sessizce sohbete düşüyordu |
+| `test_intent_failure_retries_with_main_model` / `test_intent_failure_on_both_models_raises_explicit_error` | Küçük intent modeli JSON üretemeyince kullanıcının kriter tanımı sessizce sohbete düşüyordu; artık ana modelle tekrar denenir, o da başarısızsa `IntentUndecidableError` |
+| `test_natural_language_path_also_enforces_verbatim_labels` | Birebir-etiket düzeltmesi yalnız `/criteria` yolunda çalışıyordu; komutsuz (asıl) akış parafraz edilmiş etiketi doğrudan kaydediyordu |
 | `test_same_chat_messages_are_processed_in_arrival_order` | Niyet sınıflandırması kilit dışındaydı; aynı sohbetten hızlı gelen iki mesaj sohbet geçmişine ters sırada yazılabiliyordu |
 | `test_batch_budget_trims_only_when_total_exceeds_limit` | 5 × 20.000 karakterlik batch prompt'u yerel modelin context window'unu taşırabiliyordu |
 
@@ -82,7 +83,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  105 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  106 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 
