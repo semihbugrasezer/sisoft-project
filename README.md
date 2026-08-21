@@ -3,20 +3,23 @@
 [![CI](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml/badge.svg)](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13%20%7C%203.14-blue)
 
-Bağlamı koruyan günlük sohbet ile LLM destekli CV değerlendirmesini tek Telegram
-arayüzünde birleştiren asenkron bir bot. Kullanıcı değerlendirme kriterlerini
-doğal dille tanımlar; yüklenen CV'ler doğrulanır, ortak bir `CandidateProfile`
-şemasına normalize edilir ve yalnızca bu kriterlere göre değerlendirilir —
-**ham PDF hiçbir zaman doğrudan skorlanmaz.**
+PDF'deki proje tanımını iki eşit önemli akışla karşılayan asenkron bir Telegram
+botu:
 
-Yerel-öncelikli çalışır: varsayılan yapılandırma `localhost`'taki Ollama'ya
-bağlanır, bulut servisi veya API anahtarı gerektirmez. Referans model
+1. **Daily Chat:** Günlük konuşmalarda bağlamı backend'de korur ve yeni mesajlara
+   geçmişi dikkate alarak yanıt verir.
+2. **Dinamik İK analizi:** Kullanıcının doğal dille tanımladığı kriterlere göre
+   farklı şablonlardaki CV'leri doğrular, ortak bir `CandidateProfile` JSON
+   şemasına normalize eder ve tekli ya da çoklu analiz üretir.
+
+Her iki akış da aynı katmanlı mimariyi ve `LLMPort` sözleşmesini kullanır. Sistem
+yerel veya uzak bir LLM ucuyla çalışabilir; varsayılan ve canlı kabul referansı
 **Ollama + `qwen2.5:7b`**'dir. **LM Studio** protokol entegrasyonu canlı
 doğrulanmıştır; bu makinedeki `google/gemma-4-e4b` modeli güncel kabul koşusunda
-tüm kalite kapılarını tutarlı geçememiştir. **vLLM** aynı protokolle uyumludur
-ancak bu donanımda canlı çalıştırılmamıştır.
-Çıkarım kalitesi modele bağlıdır — ölçümler:
-[docs/VALIDATION.md](docs/VALIDATION.md).
+tüm kalite kapılarını tutarlı geçememiştir. **vLLM** aynı OpenAI-uyumlu adaptörle
+desteklenir ancak bu donanımda canlı çalıştırılmamıştır. Çıkarım kalitesi modele
+bağlıdır; ölçümler ve kanıt sınırları [Canlı Doğrulama](docs/VALIDATION.md)
+belgesindedir.
 
 ## Demo
 
@@ -27,18 +30,17 @@ Gerçek Telegram üzerinden, gerçek yerel Ollama sunucusuna karşı çalıştı
 
 <img src="docs/images/demo-batch-json-2.png" alt="Telegram top-3 JSON çıktısının ikinci bölümü ve üçüncü aday" width="480">
 
-## Yetenekler
+## Mülakat Değerlendirme Haritası
 
-| Yetenek | Uygulama |
-|---|---|
-| Bağlamı koruyan sohbet | Sıcak pencere (40 mesaj) + rolling summary |
-| Dinamik kriter tanımlama | Yapılandırılmış LLM çıkarımı, komut gerekmez |
-| PDF doğrulama | Bozuk / şifreli / okunamaz / geçersiz belge reddi |
-| CV normalizasyonu | LLM Extraction → `CandidateProfile`; aday adı ve çıkarılan beceriler kaynak metne karşı doğrulanır |
-| Tekli CV analizi | Kriter skorları + güçlü/zayıf yönler + tavsiyeler (Markdown) |
-| Çoklu CV sıralama | En fazla 5 CV → backend'de deterministik top-3 JSON |
-| Kilitlenmeyen altyapı | Batch işlenirken bot yanıt vermeye devam eder |
-| LLM backend'leri | Ollama, LM Studio, vLLM — tek `LLMPort` arayüzü arkasında |
+| PDF değerlendirme kriteri | Projedeki karşılığı | Doğrulanabilir kanıt |
+|---|---|---|
+| **Dinamik Prompt Başarısı** | Serbest metin önce kriter niyeti olarak sınıflandırılır, ardından özel prompt ile tüm kriterler çıkarılır. Aynı kriterler tekli Markdown raporunda ve çoklu top-3 JSON akışında kullanılır. | [`criteria_service.py`](app/application/criteria_service.py), [`prompts.py`](app/infrastructure/llm/prompts.py), [LLM Hattı](docs/LLM_PIPELINE.md) |
+| **PDF Doğrulama & LLM Extraction Kalitesi** | Bozuk, şifreli ve metinsiz PDF'ler LLM çağrısından önce reddedilir. Geçerli metin önce `CandidateProfile` şemasına normalize edilir; ham PDF doğrudan skorlanmaz. Kaynakta bulunmayan ad, beceri ve skor kanıtı deterministik olarak filtrelenir. | [`pymupdf_parser.py`](app/infrastructure/pdf/pymupdf_parser.py), [`models.py`](app/domain/models.py), [`grounding.py`](app/domain/grounding.py), [Gereksinim Matrisi](docs/REQUIREMENTS_TRACEABILITY.md) |
+| **Asenkron Süreç & Bağlam Yönetimi** | Telegram update'leri eşzamanlı kabul edilir; bloklayan PDF/SQLite işleri thread'e taşınır. Sohbet sırası `chat_id` bazlı kilitle, uzun dönem bağlam sıcak pencere + rolling summary ile korunur. Batch analizi sohbet akışını kilitlemez. | [`router.py`](app/presentation/telegram/router.py), [`chat_service.py`](app/application/chat_service.py), [Eşzamanlılık](docs/CONCURRENCY.md) |
+| **Vibe Coding Hakimiyeti** | AI araçlarının rolü, insan denetim kapıları, reddedilen öneriler, gerçek hatalar ve mimari trade-off'lar açıkça kaydedilmiştir. Kod hâkimiyeti otomatik testler ve gerçek model koşularıyla gösterilir. | [AI Destekli Geliştirme](docs/AI_ASSISTED_DEVELOPMENT.md), [Tasarım Kararları](docs/DESIGN_DECISIONS.md), [Test Stratejisi](docs/TESTING.md), [Canlı Doğrulama](docs/VALIDATION.md) |
+
+PDF'deki tüm fonksiyonel ve teknik maddelerin kod/test karşılığı için tek kaynak:
+**[Gereksinim İzlenebilirlik Matrisi](docs/REQUIREMENTS_TRACEABILITY.md)**.
 
 ## Mimari
 
@@ -72,17 +74,21 @@ yayılımı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 ## Proje Yapısı
 
 ```text
-app/
-├── domain/                  Şemalar, hatalar, LLM portu, grounding ve skorlama
-├── application/             Sohbet, kriter, tekli ve toplu CV use-case'leri
-├── infrastructure/          LLM, PDF ve SQLite adaptörleri
-├── presentation/telegram/   Handler, router, formatter ve albüm toplama
-├── config.py                Ortam yapılandırması
-└── container.py             Composition root / bağımlılık kurulumu
-scripts/                     Mock veri üretimi ve gerçek-model kabul testi
-tests/                       Birim ve entegrasyon testleri
-docs/                        Mimari, izlenebilirlik ve canlı doğrulama kanıtları
-main.py                      Long-polling giriş noktası
+.
+├── app/
+│   ├── domain/                  Şemalar, hatalar, LLM portu, grounding ve skorlama
+│   ├── application/             Sohbet, kriter ve CV use-case'leri
+│   ├── infrastructure/          LLM, PDF ve SQLite adaptörleri
+│   ├── presentation/telegram/   Handler, router, formatter ve albüm toplama
+│   ├── config.py                Ortam yapılandırması
+│   └── container.py             Composition root / bağımlılık kurulumu
+├── docs/                        Mimari, izlenebilirlik ve doğrulama kanıtları
+├── mock_cvs/                    Beş farklı şablon ve geçersiz PDF örnekleri
+├── scripts/                     Fixture üretimi ve gerçek-model kabul testi
+├── tests/                       Birim ve entegrasyon testleri
+├── .github/workflows/ci.yml     Python 3.13/3.14 kalite kapısı
+├── main.py                      Long-polling giriş noktası
+└── pyproject.toml               Paket metadatası ve araç yapılandırması
 ```
 
 Bu yapı katman sorumluluklarını ayırır; yalnız gerçekten birden fazla
@@ -187,13 +193,15 @@ Gerekçeler ve değerlendirilip reddedilen alternatifler:
 
 ## Dokümantasyon
 
-| Doküman | İçerik |
+| Doküman | Tek sorumluluğu |
 |---|---|
-| [Gereksinim İzlenebilirliği](docs/REQUIREMENTS_TRACEABILITY.md) | Ödev maddesi → kod → test eşlemesi |
-| [Mimari](docs/ARCHITECTURE.md) | Katmanlar, eşzamanlılık, hata yayılımı, LLM backend'leri |
-| [Canlı Doğrulama](docs/VALIDATION.md) | Gerçek model ve Telegram koşuları, ölçümler |
-| [AI Destekli Geliştirme](docs/AI_ASSISTED_DEVELOPMENT.md) | Süreç, denetim noktaları, yakalanan hatalar |
-
-Ayrıca: [LLM Hattı](docs/LLM_PIPELINE.md) · [Eşzamanlılık](docs/CONCURRENCY.md) ·
-[Test Stratejisi](docs/TESTING.md) · [Tasarım Kararları](docs/DESIGN_DECISIONS.md) ·
-[Güvenlik](SECURITY.md) · [Katkı Rehberi](CONTRIBUTING.md)
+| [Gereksinim İzlenebilirliği](docs/REQUIREMENTS_TRACEABILITY.md) | PDF maddesi → kod → test/canlı kanıt eşlemesi |
+| [Mimari](docs/ARCHITECTURE.md) | Katmanlar, bağımlılık yönü ve hata yayılımı |
+| [LLM Hattı](docs/LLM_PIPELINE.md) | Prompt, structured output, grounding ve prompt-injection savunması |
+| [Eşzamanlılık](docs/CONCURRENCY.md) | Update, kilit, thread ve batch çalışma modeli |
+| [Test Stratejisi](docs/TESTING.md) | Otomatik test kapsamı ve gerçek-model kabul komutları |
+| [Canlı Doğrulama](docs/VALIDATION.md) | Tarihli gerçek Ollama/LM Studio/Telegram sonuçları ve sınırlamalar |
+| [Tasarım Kararları](docs/DESIGN_DECISIONS.md) | Seçilen ve reddedilen alternatiflerin gerekçeleri |
+| [AI Destekli Geliştirme](docs/AI_ASSISTED_DEVELOPMENT.md) | AI araçları, insan denetimi ve yakalanan gerçek hatalar |
+| [Güvenlik](SECURITY.md) | Tehdit modeli, veri yaşam döngüsü ve üretim sınırları |
+| [Katkı Rehberi](CONTRIBUTING.md) | Geliştirme, kalite kapıları ve PR politikası |
