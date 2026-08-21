@@ -41,6 +41,7 @@ def _build_llm(config: Config) -> LLMPort:
         config.llm_model,
         config.llm_timeout,
         max_concurrency=config.llm_max_concurrency,
+        context_length=config.llm_context_length,
     )
 
 

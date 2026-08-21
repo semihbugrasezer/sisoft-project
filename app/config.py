@@ -15,6 +15,7 @@ class Config:
     llm_model: str
     llm_intent_model: str | None
     llm_max_concurrency: int
+    llm_context_length: int
     llm_api_key: str | None
     db_path: str
     llm_timeout: float
@@ -53,6 +54,11 @@ def load_config() -> Config:
         # (bkz. ollama_client.py / openai_compatible_client.py) — Telegram
         # concurrent_updates(8) sınırından bağımsız.
         llm_max_concurrency=int(os.getenv("LLM_MAX_CONCURRENCY", "3")),
+        # Ollama'ya açıkça bildirilen context penceresi. Gönderilmezse Ollama kendi
+        # varsayılanına (tipik 4096) düşer ve 5 CV'lik batch üretim sırasında taşar
+        # (bkz. ollama_client.py). qwen2.5:7b 32k destekliyor; daha kısa context'li
+        # bir model kullanılırsa bu değer düşürülmeli.
+        llm_context_length=int(os.getenv("LLM_CONTEXT_LENGTH", "32768")),
         # openai_compatible backend'i için isteğe bağlı — LM Studio/vLLM lokal
         # kurulumda genelde gerekmez, uzak/korumalı bir uç için kullanılabilir.
         llm_api_key=os.getenv("LLM_API_KEY") or None,

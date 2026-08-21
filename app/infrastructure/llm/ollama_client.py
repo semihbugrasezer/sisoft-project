@@ -19,9 +19,25 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class OllamaClient:
-    def __init__(self, base_url: str, model: str, timeout: float, max_concurrency: int = 3):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout: float,
+        max_concurrency: int = 3,
+        context_length: int = 32768,
+    ):
         self._base_url = base_url.rstrip("/")
         self._model = model
+        # num_ctx gönderilmezse Ollama kendi varsayılanına (tipik 4096) düşer.
+        # Batch akışı TÜM belgeleri tek prompt'a koyuyor ve toplam metin bütçesi
+        # 32k token varsayımıyla hesaplanmış (bkz. MAX_BATCH_EXTRACTED_CHARS) — ama
+        # bu varsayım modele hiç iletilmiyordu. 5 CV'lik gerçek koşuda GİRDİ 2100
+        # token'da kalıyor, ÜRETİM 2765 token sürüyor: toplam 4865 > 4096. Pencere
+        # üretim sırasında dolunca model son belgenin kaynağını kaybedip ilk
+        # belgenin profilini birebir tekrarladı (doc4 = Nehir Avcı, Deniz Aksoy'un
+        # kopyasını aldı). Prompt kırpılmıyor; taşan üretim tarafı.
+        self._context_length = context_length
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0))
         # Telegram tarafı concurrent_updates(8) ile eşzamanlı update kabul eder, ama
         # tek yerel Ollama instance'ı bunları paralel işleyemez — sınırsız istek
@@ -45,7 +61,7 @@ class OllamaClient:
             "messages": messages,
             "stream": False,
             "think": False,
-            "options": {"temperature": temperature},
+            "options": {"temperature": temperature, "num_ctx": self._context_length},
         }
         if format_ is not None:
             payload["format"] = format_
@@ -56,8 +72,19 @@ class OllamaClient:
         except httpx.HTTPError as exc:
             logger.warning("Ollama isteği başarısız: %s", exc)
             raise LLMUnavailableError(str(exc)) from exc
+        body = resp.json()
+        # Taşmayı tahmin etmek yerine ölç: prompt + üretim pencereyi doldurduysa
+        # çıktı sessizce bozulmuş olabilir (yukarıdaki doc4 vakası).
+        used = (body.get("prompt_eval_count") or 0) + (body.get("eval_count") or 0)
+        if used >= self._context_length:
+            logger.warning(
+                "Context penceresi doldu: %d/%d token (girdi=%s, üretim=%s) — "
+                "çıktı kırpılmış olabilir, LLM_CONTEXT_LENGTH artırılmalı",
+                used, self._context_length,
+                body.get("prompt_eval_count"), body.get("eval_count"),
+            )
         try:
-            content = resp.json()["message"]["content"]
+            content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content metin değil")
             return content
