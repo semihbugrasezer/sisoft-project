@@ -24,15 +24,16 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 Bu tur önceki sonuçlara güvenmek yerine kabul script'ini yeniden çalıştırdı.
 Ortam: Python 3.14, Apple M2/16 GB, Ollama `qwen2.5:7b`, LM Studio
 `google/gemma-4-e4b`; başlangıç Git commit'i `45faefe` idi. Son hardening
-tekrarı `origin/main` `0162d35` tabanlı çalışma ağacında yapıldı.
+tekrarı `origin/main` `0162d35` tabanlı çalışma ağacında yapıldı. En güncel
+Ollama `--full` tekrar koşusu `origin/main` `4ddb059` üzerinde çalıştırıldı.
 
 | Backend / aşama | Sonuç | Süre / not |
 |---|---|---|
 | Ollama — kriter niyeti + özel extraction | ✅ 3/3 kriter | 97.5s; `React deneyimi`, `Temiz kod yazımı`, `Uzaktan çalışma uyumu` |
 | Ollama — tekli CV tam hattı | ✅ PASS | 195.1s; profile extraction, 3/3 skor, nitel bölümler ve Markdown başlıkları geçti |
-| Ollama — son `--full` kriter tekrarı | ✅ 3/3, tekrarsız | 117.0s; tam üç kriter çıktı, yakın anlamlı uzaktan-çalışma etiketi çoğaltılmadı |
-| Ollama — son `--full` tekli CV tekrarı | ✅ PASS | 245.0s; çift kaynak kanıt grounding, 3/3 skor, dolu nitel bölümler ve Markdown başlıkları geçti |
-| Ollama — son `--full` 5-CV batch | ✅ PASS | 1003.8s; üç kaynak-dışı skor 0'a indirildi; top-3 ortalamaları bağımsız doğrulandı (`90.0 / 55.0 / 55.0`), nihai JSON şeması geçti |
+| Ollama — son `--full` kriter tekrarı | ✅ 3/3, tekrarsız | 129.0s; tam üç kriter çıktı, yakın anlamlı uzaktan-çalışma etiketi çoğaltılmadı |
+| Ollama — son `--full` tekli CV tekrarı | ✅ PASS | 247.9s; çift kaynak kanıt grounding, 3/3 skor, dolu nitel bölümler ve Markdown başlıkları geçti |
+| Ollama — son `--full` 5-CV batch | ✅ PASS | 991.3s; üç kaynak-dışı skor 0'a indirildi; top-3 ortalamaları bağımsız doğrulandı (`90.0 / 55.0 / 55.0`), nihai JSON şeması geçti |
 | LM Studio — düzeltme öncesi kriter akışı | ⚠️ 2/3 kriter | Birleşik intent çıktısı uzaktan çalışma kriterini atladı; bu bulgu özel extraction turunun her criteria niyetinde zorunlu olmasına yol açtı |
 | LM Studio — düzeltme sonrası tekrar | ⚠️ güvenli red | API ve JSON-schema entegrasyonu çalıştı. `gemma-4-e4b`, intent'te 2/3 ve özel extraction'da 1/3 kriter üretti; eksik-terim turunda da React'i tekrarladı. Servis kısmi listeyi kaydetmeyip kontrollü `LLMOutputValidationError` döndürdü (son koşu 25.4s) |
 
@@ -79,9 +80,9 @@ nesnesinin kısıtlı JSON şemasıdır:
 
 - Kriter çıkarımı: ~70 saniye.
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
-- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): beş ölçüm —
-  580s / 463.5s / 476.7s / 852s / **1003.8s**. Yani **~8-17 dakika** aralığı;
-  en güncel `--full` çalışma ağacı koşusu 1003.8s = 16.7 dakikadır.
+- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
+  580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Yani **~8-17
+  dakika** aralığı; en güncel `--full` koşusu 991.3s = 16.5 dakikadır.
 
 ## OpenAI-Uyumlu Backend (LM Studio) — Uçtan Uca Doğrulama
 
