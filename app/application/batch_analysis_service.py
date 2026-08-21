@@ -6,8 +6,8 @@
    PDF'in "hatalı format tespit ederse süreci kesip net hata döner" şartı gereği
    TÜM batch reddedilir, hiçbir dosya LLM'e gönderilmez.
 2. Doğrulanan metinler tek batch çağrısında ortak profillere çevrilir; ikinci batch
-   çağrısı yalnız bu profilleri değerlendirir. Her CV skorlanamazsa eksik sıralama
-   dönmek yerine tüm analiz kontrollü hatayla kesilir.
+   çağrısı yalnız bu profilleri değerlendirir. Eksik/tekrarlı evaluation belgeleri
+   tekli şemayla tamamlanır; yine her CV skorlanamazsa kısmi sıralama dönmez.
 """
 from __future__ import annotations
 

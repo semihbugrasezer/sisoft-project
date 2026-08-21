@@ -21,7 +21,7 @@ mypy app main.py
 
 ## Kapsam
 
-Toplam **155 test**, 18 dosyada. (Test sayısının tek kaynağı bu
+Toplam **159 test**, 18 dosyada. (Test sayısının tek kaynağı bu
 dokümandır; diğer dosyalar sayı tekrar etmez ki eskimesinler.)
 
 | Dosya | Test | Neyi doğrular |
@@ -103,7 +103,7 @@ Bazı testler doğrudan gerçek bir hatadan doğdu; isimleri o hatayı anlatır:
 ruff check      →  lint + import sırası
 mypy            →  tip denetimi
 compileall      →  sözdizimi
-pytest          →  155 test (Python 3.13 ve 3.14 matrisi)
+pytest          →  159 test (Python 3.13 ve 3.14 matrisi)
 pip check       →  bağımlılık tutarlılığı
 ```
 

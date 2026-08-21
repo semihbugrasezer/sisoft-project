@@ -70,6 +70,22 @@ def test_keeps_short_or_symbolic_exact_criterion():
     assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
 
 
+def test_strips_evaluation_command_suffix_from_grounded_label():
+    criteria = [
+        Criterion(
+            id="remote",
+            label="uzaktan çalışma uyumuna göre skorla",
+            description="x",
+        )
+    ]
+
+    grounded = CriteriaService._grounded_criteria(
+        criteria, "uzaktan çalışma uyumuna göre skorla"
+    )
+
+    assert grounded[0].label == "uzaktan çalışma uyumu"
+
+
 class FakeLLMParaphrasedLabel:
     """Model kullanıcının ifadesini hafifçe yeniden yazar: "React tecrübesi" ->
     "React deneyimi". Anlam korunur ve etiket kullanıcının kelimesine dayanır."""
@@ -280,6 +296,72 @@ async def test_intent_and_extractor_partial_results_are_combined_before_missing_
     )
 
     assert llm.calls == 3
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_missing_retry_focuses_weak_model_on_only_uncovered_text():
+    class RepeatsFirstCriterionUnlessFocusedLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            react = Criterion(id="react", label="React tecrübesi", description="x")
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(
+                    intent="criteria",
+                    criteria=[
+                        react,
+                        Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
+                    ],
+                )
+            if self.calls == 2 or "React tecrübesi" in user:
+                return CriteriaExtractionResult(criteria=[react])
+            return CriteriaExtractionResult(
+                criteria=[
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            )
+
+    criteria = await CriteriaService(
+        RepeatsFirstCriterionUnlessFocusedLLM(), FakeRepo()
+    ).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_missing_retry_extracts_each_uncovered_segment_separately():
+    class OneCriterionPerCallLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            react = Criterion(id="react", label="React tecrübesi", description="x")
+            if response_model is CriteriaIntentResult or self.calls == 2:
+                result = [react]
+            elif "temiz kod" in user:
+                result = [Criterion(id="clean_code", label="temiz kod yazımı", description="x")]
+            else:
+                result = [
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=result)
+            return CriteriaExtractionResult(criteria=result)
+
+    llm = OneCriterionPerCallLLM()
+    criteria = await CriteriaService(llm, FakeRepo()).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert llm.calls == 4
     assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
 
 

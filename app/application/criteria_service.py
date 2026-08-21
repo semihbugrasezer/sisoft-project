@@ -83,26 +83,25 @@ class CriteriaService:
                 seen_label_keys.add(label_key)
         uncovered = self._uncovered_criterion_segments(criteria, free_text)
         if not criteria or uncovered:
-            missing = ", ".join(sorted(uncovered)) or "tüm kullanıcı kriterleri"
-            existing = ", ".join(criterion.label for criterion in criteria) or "yok"
-            retry_result = await self._llm.structured_chat(
-                CRITERIA_EXTRACTOR_SYSTEM,
-                free_text
-                + "\n\nDÜZELTME: Önceki çıktı şu kriter parçalarını kapsamadı: "
-                + missing
-                + ". Mevcut doğru etiketleri tekrar etme: "
-                + existing
-                + ". Virgül ve 've' ile bağlanan her ayrı ölçüt için ayrı bir öğe üret; "
-                "yalnızca kullanıcı metninde geçen ölçütleri çıkar.",
-                CriteriaExtractionResult,
-            )
-            retry_criteria = self._grounded_criteria(retry_result.criteria, free_text)
-            for criterion in retry_criteria:
-                label_key = _criterion_label_key(criterion.label)
-                if criterion.id not in seen_ids and label_key not in seen_label_keys:
-                    criteria.append(criterion)
-                    seen_ids.add(criterion.id)
-                    seen_label_keys.add(label_key)
+            retry_sources = sorted(uncovered) if uncovered else [free_text]
+            for retry_source in retry_sources:
+                retry_result = await self._llm.structured_chat(
+                    CRITERIA_EXTRACTOR_SYSTEM,
+                    retry_source
+                    + "\n\nDÜZELTME: Yalnızca yukarıdaki, önceki çıktının kapsamadığı "
+                    "kriter parçasını çıkar. Önceki doğru etiketleri tekrar etme; "
+                    "yalnızca kullanıcı metninde geçen ölçütü çıkar.",
+                    CriteriaExtractionResult,
+                )
+                retry_criteria = self._grounded_criteria(retry_result.criteria, free_text)
+                for criterion in retry_criteria:
+                    label_key = _criterion_label_key(criterion.label)
+                    if criterion.id not in seen_ids and label_key not in seen_label_keys:
+                        criteria.append(criterion)
+                        seen_ids.add(criterion.id)
+                        seen_label_keys.add(label_key)
+                if not self._uncovered_criterion_segments(criteria, free_text):
+                    break
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
         if self._uncovered_criterion_segments(criteria, free_text):
@@ -210,7 +209,18 @@ class CriteriaService:
                 _appears_in_words(word, source_words) for word in meaningful_words
             )
 
-        return [criterion for criterion in criteria if is_grounded(criterion)]
+        grounded: list[Criterion] = []
+        for criterion in criteria:
+            label = re.sub(
+                r"(?:n[ae])?\s+göre\s+(?:skorla|puanla|değerlendir)\s*$",
+                "",
+                criterion.label,
+                flags=re.IGNORECASE,
+            ).strip()
+            normalized = criterion.model_copy(update={"label": label})
+            if is_grounded(normalized):
+                grounded.append(normalized)
+        return grounded
 
     async def get_active_criteria(self, chat_id: int) -> list[Criterion]:
         raw = await self._repo.get_criteria(chat_id)

@@ -2,8 +2,10 @@
 
 extract_text ve analyze_from_text ayrı metotlar: batch_analysis_service önce TÜM
 dosyaları doğrulayıp sonra LLM'e geçmek istiyor (all-or-nothing ön doğrulama),
-bu yüzden PDF validation'ı ile LLM adımları ayrıştırılabilir olmalı. Batch yolu tüm profilleri
-tek extraction çağrısında, tüm skorları yalnız normalize profillerden ikinci çağrıda üretir.
+bu yüzden PDF validation'ı ile LLM adımları ayrıştırılabilir olmalı. Batch yolu
+normalde tüm profilleri tek extraction çağrısında, tüm skorları yalnız normalize
+profillerden ikinci çağrıda üretir; eksik/tekrarlı evaluation belgeleri tekli
+şemayla tamamlanır.
 """
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import Counter
 
 from app.domain.errors import LLMOutputValidationError
 from app.domain.grounding import (
@@ -252,17 +255,40 @@ class CVAnalysisService:
             BatchEvaluationResult,
         )
         logger.info("Batch evaluation bitti (%.1fs)", time.monotonic() - t0)
-        evaluations_by_id = self._items_by_document_id(
-            evaluations_result.candidates, len(texts)
-        )
+        id_counts = Counter(item.documentId for item in evaluations_result.candidates)
+        expected_ids = set(range(len(texts)))
+        evaluations_by_id = {
+            item.documentId: item.evaluation
+            for item in evaluations_result.candidates
+            if item.documentId in expected_ids and id_counts[item.documentId] == 1
+        }
+        for document_id in sorted(expected_ids - set(evaluations_by_id)):
+            logger.warning(
+                "Batch evaluation documentId=%d için eksik/tekrarlı; tekli retry deneniyor",
+                document_id,
+            )
+            retry = await self._llm.structured_chat(
+                CANDIDATE_EVALUATOR_SYSTEM,
+                "CANDIDATE_PROFILE (JSON):\n"
+                + profiles_by_id[document_id].profile.model_dump_json()
+                + "\n\nCRITERIA (JSON):\n"
+                + json.dumps(criteria_data, ensure_ascii=False)
+                + "\n\ncriterionId ve criterionLabel alanlarında yukarıdaki "
+                "değerleri birebir kullan.",
+                EvaluationResult,
+            )
+            evaluations_by_id[document_id] = BatchCandidateEvaluation(
+                scores=retry.scores,
+                hrEvaluation=retry.hrEvaluation,
+            )
 
         return [
             (
                 profiles_by_id[document_id].profile,
-                evaluations_by_id[document_id].evaluation.model_copy(
+                evaluations_by_id[document_id].model_copy(
                     update={
                         "scores": self._normalize_scores(
-                            evaluations_by_id[document_id].evaluation.scores,
+                            evaluations_by_id[document_id].scores,
                             criteria,
                             profiles_by_id[document_id].profile,
                             fitted_texts[document_id],

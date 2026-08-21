@@ -3,8 +3,10 @@
 [![CI](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml/badge.svg)](https://github.com/semihbugrasezer/sisoft-project/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13%20%7C%203.14-blue)
 
-PDF'deki proje tanımını iki eşit önemli akışla karşılayan asenkron bir Telegram
-botu:
+## Proje Özeti
+
+Bu proje, PDF'de tanımlanan iki kullanım senaryosunu tek bir asenkron Telegram
+botunda birleştirir:
 
 1. **Daily Chat:** Günlük konuşmalarda bağlamı backend'de korur ve yeni mesajlara
    geçmişi dikkate alarak yanıt verir.
@@ -12,18 +14,16 @@ botu:
    farklı şablonlardaki CV'leri doğrular, ortak bir `CandidateProfile` JSON
    şemasına normalize eder ve tekli ya da çoklu analiz üretir.
 
-Her iki akış da aynı katmanlı mimariyi ve `LLMPort` sözleşmesini kullanır. PDF'nin
-zorunlu LLM şartı — **Ollama, vLLM veya LM Studio** seçeneklerinden en az biri —
-varsayılan ve canlı kabul referansı **Ollama + `qwen2.5:7b`** ile karşılanır.
+## LLM Entegrasyonu
 
-Sistem yapılandırmayla yerel veya uzak bir LLM ucuna bağlanabilir. Ek
-`OpenAICompatibleClient` adaptörüyle **LM Studio** ve **vLLM** sunucuları
-desteklenir. LM Studio'da hem sohbet hem JSON-schema protokolü canlı
-doğrulanmıştır; ancak bu makinedeki `google/gemma-4-e4b` modeli ödevin tam kalite
-kabulünü tutarlı geçememiştir. vLLM'in güncel sunucu sözleşmesi kullanılan
-`response_format` yapısıyla uyumludur, fakat vLLM bu donanımda canlı
-çalıştırılmamıştır. Entegrasyon uyumluluğu ile model kalitesi aynı şey değildir;
-ölçümler ve kanıt sınırları [Canlı Doğrulama](docs/VALIDATION.md) belgesindedir.
+Her iki akış da aynı `LLMPort` sözleşmesini kullanır. Varsayılan ve tam kabul
+testinden geçmiş yapılandırma **Ollama + `qwen2.5:7b`**'dir.
+`OpenAICompatibleClient` adaptörü üzerinden yerel veya uzak **LM Studio** ve
+**vLLM** sunucularına da bağlanılabilir. **LM Studio +
+`google/gemma-4-e4b`** ile kriter, tekli CV ve 5 CV Top-3 akışları canlı
+doğrulanmıştır. vLLM aynı OpenAI-uyumlu protokolü kullanır; bu donanımda
+canlı çalıştırılmamıştır. Ayrıntılı sonuçlar, süreler ve kanıt sınırları:
+**[Canlı Doğrulama](docs/VALIDATION.md)**.
 
 ## Demo
 

@@ -22,7 +22,10 @@ CRITERIA_EXTRACTOR_SYSTEM = (
     "CV'de aranacak ipuçları (evidenceHints) üret. Kullanıcının yazmadığı bir kriteri "
     "kendinden ekleme; label'ı gereksiz yere yeniden ifade etme veya dilbilgisel olarak "
     "düzeltme — küçük eş anlamlı sapmalar (örn. 'tecrübesi'→'deneyimi') olsa bile kullanıcının "
-    "kastettiği konuyu değiştirme. Sadece verilen JSON şemasına uyan çıktı üret."
+    "kastettiği konuyu değiştirme. Label yalnızca kriter adı olsun; 'göre skorla' veya "
+    "'göre değerlendir' gibi komut eklerini label'a alma (örn. 'uzaktan çalışma "
+    "uyumuna göre skorla' için label='uzaktan çalışma uyumu'). Sadece verilen JSON "
+    "şemasına uyan çıktı üret."
 )
 
 CRITERIA_INTENT_SYSTEM = (
@@ -30,7 +33,8 @@ CRITERIA_INTENT_SYSTEM = (
     "tanımlamadığını belirle. Mesaj değerlendirme ölçütü tanımlıyorsa intent='criteria' "
     "döndür ve kullanıcının yazdığı tüm kriterleri çıkar; tanımlamıyorsa intent='chat' ve "
     "boş criteria döndür. Kriter için kısa snake_case id, kullanıcı metninden birebir "
-    "kopyalanmış kesintisiz label, kısa description ve evidenceHints üret. Anahtar kelime "
+    "kopyalanmış kesintisiz label, kısa description ve evidenceHints üret. Label'a 'göre "
+    "skorla' veya 'göre değerlendir' gibi komut eklerini alma; yalnızca kriter adını yaz. Anahtar kelime "
     "listesi kullanma, kullanıcının yazmadığı kriter ekleme ve sadece JSON şemasına uy."
 )
 
