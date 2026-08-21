@@ -1,0 +1,5 @@
+python-telegram-bot>=21.0
+httpx>=0.27
+pydantic>=2.6
+pymupdf>=1.24
+python-dotenv>=1.0

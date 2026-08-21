@@ -1,0 +1,697 @@
+import pytest
+
+from app.application.cv_analysis_service import MAX_BATCH_EXTRACTED_CHARS, CVAnalysisService
+from app.domain.errors import LLMOutputValidationError
+from app.domain.models import (
+    BatchCandidateEvaluation,
+    BatchEvaluationItem,
+    BatchEvaluationResult,
+    BatchProfileItem,
+    BatchProfileResult,
+    CandidateProfile,
+    Criterion,
+    CriterionScore,
+    EvaluationResult,
+)
+
+
+class FakeLLM:
+    def __init__(self, criterion_id: str):
+        self.criterion_id = criterion_id
+        self.prompts: list[str] = []
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.prompts.append(user)
+        if response_model is CandidateProfile:
+            return CandidateProfile(
+                candidateName="Ada",
+                contact={},
+                summary=None,
+                skills=["React"],
+                workExperiences=[],
+                education=[],
+                languages=[],
+            )
+        return EvaluationResult(
+            scores=[
+                CriterionScore(
+                    criterionId=self.criterion_id,
+                    criterionLabel="modelin değiştirdiği etiket",
+                    score=80,
+                    evidence=["React"],
+                    reason="kanıt",
+                )
+            ],
+            strengths=["güçlü yön"],
+            weaknesses=["zayıf yön"],
+            recommendations=["tavsiye"],
+            hrEvaluation="uygun",
+        )
+
+
+CRITERIA = [
+    Criterion(
+        id="react",
+        label="React tecrübesi",
+        description="React deneyimi",
+        evidenceHints=["React.js üretim projesi"],
+    )
+]
+
+
+def _profile(name="Ada"):
+    return CandidateProfile(
+        candidateName=name,
+        contact={},
+        summary=None,
+        skills=["React"],
+        workExperiences=[],
+        education=[],
+        languages=[],
+    )
+
+
+def _evaluation(criterion_id="react"):
+    return EvaluationResult(
+        scores=[
+            CriterionScore(
+                criterionId=criterion_id,
+                criterionLabel="model etiketi",
+                score=80,
+                evidence=["React"],
+                reason="kanıt",
+            )
+        ],
+        strengths=["güçlü yön"],
+        weaknesses=["zayıf yön"],
+        recommendations=["tavsiye"],
+        hrEvaluation="uygun",
+    )
+
+
+def _batch_evaluation():
+    return BatchCandidateEvaluation(
+        scores=_evaluation().scores,
+        hrEvaluation="uygun",
+    )
+
+
+class FakeBatchLLM:
+    def __init__(self):
+        self.prompts = []
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.prompts.append(user)
+        if response_model is BatchProfileResult:
+            return BatchProfileResult(
+                candidates=[
+                    BatchProfileItem(documentId=0, profile=_profile("Ada")),
+                    BatchProfileItem(documentId=1, profile=_profile("Can")),
+                ]
+            )
+        return BatchEvaluationResult(
+            candidates=[
+                BatchEvaluationItem(documentId=0, evaluation=_batch_evaluation()),
+                BatchEvaluationItem(documentId=1, evaluation=_batch_evaluation()),
+            ]
+        )
+
+
+@pytest.mark.asyncio
+async def test_evaluation_uses_and_enforces_criterion_identity():
+    llm = FakeLLM("react")
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text(
+        "Ada Lovelace — React CV metni", CRITERIA
+    )
+
+    assert "id=react" in llm.prompts[1]
+    assert "React.js üretim projesi" in llm.prompts[1]
+    assert evaluation.scores[0].criterionLabel == "React tecrübesi"
+
+
+@pytest.mark.asyncio
+async def test_evaluation_rejects_missing_or_invented_criterion():
+    with pytest.raises(LLMOutputValidationError):
+        await CVAnalysisService(FakeLLM("invented")).analyze_from_text(
+            "Ada Lovelace — CV metni", CRITERIA
+        )
+
+
+@pytest.mark.asyncio
+async def test_single_evaluation_retries_once_when_a_criterion_is_missing():
+    clean_code = Criterion(id="clean_code", label="Clean Code", description="Clean Code")
+
+    class CompletesScoresOnRetryLLM:
+        def __init__(self):
+            self.evaluation_calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                return _profile().model_copy(update={"skills": ["React", "Clean Code"]})
+            self.evaluation_calls += 1
+            scores = _evaluation().scores
+            if self.evaluation_calls > 1:
+                scores = [
+                    *scores,
+                    CriterionScore(
+                        criterionId="clean_code",
+                        criterionLabel="Clean Code",
+                        score=80,
+                        evidence=["Clean Code"],
+                        reason="kanıt",
+                    ),
+                ]
+            return EvaluationResult(
+                scores=scores,
+                strengths=["x"],
+                weaknesses=["x"],
+                recommendations=["x"],
+                hrEvaluation="x",
+            )
+
+    llm = CompletesScoresOnRetryLLM()
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nReact\nClean Code", [*CRITERIA, clean_code]
+    )
+
+    assert llm.evaluation_calls == 2
+    assert [score.criterionId for score in evaluation.scores] == ["react", "clean_code"]
+
+
+@pytest.mark.asyncio
+async def test_high_score_evidence_must_exist_in_normalized_profile():
+    class UngroundedEvidenceLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                return _profile()
+            return EvaluationResult(
+                scores=[
+                    CriterionScore(
+                        criterionId="react",
+                        criterionLabel="React tecrübesi",
+                        score=95,
+                        evidence=["Kubernetes ile 10 yıl deneyim"],
+                        reason="uydurulmuş kanıt",
+                    )
+                ],
+                strengths=["x"],
+                weaknesses=["x"],
+                recommendations=["x"],
+                hrEvaluation="x",
+            )
+
+    _, evaluation = await CVAnalysisService(UngroundedEvidenceLLM()).analyze_from_text(
+        "Ada\nReact",
+        CRITERIA,
+    )
+
+    assert evaluation.scores[0].score == 0
+    assert evaluation.scores[0].evidence == ["Kanıt yok"]
+
+
+@pytest.mark.asyncio
+async def test_high_score_evidence_may_explain_a_fact_that_exists_in_profile():
+    class GroundedParaphraseLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                return _profile()
+            return EvaluationResult(
+                scores=[
+                    CriterionScore(
+                        criterionId="react",
+                        criterionLabel="React tecrübesi",
+                        score=80,
+                        evidence=["Aday React alanında deneyimlidir"],
+                        reason="React profile içinde yer alıyor",
+                    )
+                ],
+                strengths=["x"],
+                weaknesses=["x"],
+                recommendations=["x"],
+                hrEvaluation="x",
+            )
+
+    _, evaluation = await CVAnalysisService(GroundedParaphraseLLM()).analyze_from_text(
+        "Ada\nReact",
+        CRITERIA,
+    )
+
+    assert evaluation.scores[0].score == 80
+
+
+class EvidenceLLM:
+    def __init__(self, profile: CandidateProfile, evaluation: EvaluationResult):
+        self.profile = profile
+        self.evaluation = evaluation
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        return self.profile if response_model is CandidateProfile else self.evaluation
+
+
+def _scored_evaluation(
+    criterion: Criterion, evidence: str, score: int = 95
+) -> EvaluationResult:
+    return EvaluationResult(
+        scores=[
+            CriterionScore(
+                criterionId=criterion.id,
+                criterionLabel=criterion.label,
+                score=score,
+                evidence=[evidence],
+                reason="x",
+            )
+        ],
+        strengths=["x"],
+        weaknesses=["x"],
+        recommendations=["x"],
+        hrEvaluation="x",
+    )
+
+
+@pytest.mark.asyncio
+async def test_high_score_rejects_evidence_with_one_real_and_one_invented_claim():
+    llm = EvidenceLLM(_profile(), _scored_evaluation(CRITERIA[0], "React ve Kubernetes"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", CRITERIA)
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_high_score_rejects_invented_numeric_claim():
+    llm = EvidenceLLM(_profile(), _scored_evaluation(CRITERIA[0], "React ile 10 yıl"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", CRITERIA)
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_cross_language_criterion_accepts_fully_source_grounded_evidence():
+    criterion = Criterion(id="clean_code", label="Temiz kod yazımı", description="temiz kod")
+    profile = _profile().model_copy(update={"skills": ["Clean Code"]})
+    llm = EvidenceLLM(profile, _scored_evaluation(criterion, "Clean Code"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nClean Code", [criterion]
+    )
+
+    assert evaluation.scores[0].score == 95
+
+
+@pytest.mark.asyncio
+async def test_high_score_evidence_must_exist_in_raw_source_not_only_profile():
+    criterion = Criterion(id="k8s", label="Kubernetes", description="Kubernetes")
+    profile = _profile().model_copy(update={"skills": ["Kubernetes"]})
+    llm = EvidenceLLM(profile, _scored_evaluation(criterion, "Kubernetes"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", [criterion])
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_downgrades_cross_candidate_evidence_instead_of_aborting():
+    class LeakyBatchLLM(FakeBatchLLM):
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is BatchProfileResult:
+                return await super().structured_chat(
+                    system, user, response_model, temperature, model
+                )
+            leaked = _scored_evaluation(CRITERIA[0], "React ve Kubernetes").scores
+            return BatchEvaluationResult(
+                candidates=[
+                    BatchEvaluationItem(
+                        documentId=index,
+                        evaluation=BatchCandidateEvaluation(
+                            scores=leaked,
+                            hrEvaluation="uygun",
+                        ),
+                    )
+                    for index in range(2)
+                ]
+            )
+
+    analyses = await CVAnalysisService(LeakyBatchLLM()).analyze_batch_from_texts(
+        ["Ada React", "Can React"], CRITERIA
+    )
+
+    assert [item[1].scores[0].score for item in analyses] == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_ungrounded_extracted_skill_is_removed_from_normalized_profile():
+    criterion = Criterion(id="k8s", label="Kubernetes", description="Kubernetes")
+    profile = _profile().model_copy(update={"skills": ["Kubernetes"]})
+    llm = EvidenceLLM(
+        profile,
+        _scored_evaluation(criterion, "Kanıt yok", score=0),
+    )
+
+    normalized, _ = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nReact", [criterion]
+    )
+
+    assert normalized.skills == []
+
+
+@pytest.mark.asyncio
+async def test_all_extracted_profile_fields_are_grounded_in_source():
+    profile = CandidateProfile(
+        candidateName="Ada Lovelace",
+        contact={
+            "email": "ada@example.com",
+            "phone": "+90 999 000 00 00",
+            "location": "Berlin",
+        },
+        summary="Senior Kubernetes developer",
+        skills=["React", "Kubernetes"],
+        workExperiences=[{
+            "company": "Acme",
+            "title": "Platform Architect",
+            "startDate": "2020",
+            "endDate": "2024",
+            "description": "Built Kubernetes clusters",
+        }],
+        education=[{
+            "institution": "Bogazici University",
+            "degree": "Master of Science",
+            "field": "Computer Engineering",
+            "graduationDate": "2019",
+        }],
+        languages=[
+            {"name": "English", "level": "C2"},
+            {"name": "German", "level": "B2"},
+        ],
+    )
+    llm = EvidenceLLM(profile, _scored_evaluation(CRITERIA[0], "React", score=80))
+    source = """Ada Lovelace
+ada@example.com
+Istanbul
+Senior developer
+React
+Acme | Software Engineer | 2020-2024
+Bogazici University | Computer Engineering | 2019
+English | C1
+"""
+
+    normalized, _ = await CVAnalysisService(llm).analyze_from_text(source, CRITERIA)
+
+    assert normalized.contact.model_dump() == {
+        "email": "ada@example.com",
+        "phone": None,
+        "location": None,
+    }
+    assert normalized.summary is None
+    assert normalized.skills == ["React"]
+    assert normalized.workExperiences[0].model_dump() == {
+        "company": "Acme",
+        "title": None,
+        "startDate": "2020",
+        "endDate": "2024",
+        "description": None,
+    }
+    assert normalized.education[0].model_dump() == {
+        "institution": "Bogazici University",
+        "degree": None,
+        "field": "Computer Engineering",
+        "graduationDate": "2019",
+    }
+    assert [language.model_dump() for language in normalized.languages] == [
+        {"name": "English", "level": None}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_single_profile_retries_once_when_an_extracted_field_is_ungrounded():
+    class CorrectsProfileOnRetryLLM:
+        def __init__(self):
+            self.extraction_calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                self.extraction_calls += 1
+                return CandidateProfile(
+                    candidateName="Ada",
+                    contact={},
+                    summary=(
+                        "Senior developer"
+                        if self.extraction_calls > 1
+                        else "Senior Kubernetes developer"
+                    ),
+                    skills=["React"],
+                    workExperiences=[],
+                    education=[],
+                    languages=[],
+                )
+            return _evaluation()
+
+    llm = CorrectsProfileOnRetryLLM()
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nSenior developer\nReact", CRITERIA
+    )
+
+    assert llm.extraction_calls == 2
+    assert profile.summary == "Senior developer"
+
+
+@pytest.mark.asyncio
+async def test_single_profile_retries_when_a_present_source_section_was_omitted():
+    class AddsMissingSummaryOnRetryLLM:
+        def __init__(self):
+            self.extraction_calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is CandidateProfile:
+                self.extraction_calls += 1
+                return CandidateProfile(
+                    candidateName="Ada",
+                    contact={},
+                    summary="Senior developer" if self.extraction_calls > 1 else None,
+                    skills=["React"],
+                    workExperiences=[],
+                    education=[],
+                    languages=[],
+                )
+            return _evaluation()
+
+    llm = AddsMissingSummaryOnRetryLLM()
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nÖZET\nSenior developer\nYETENEKLER\nReact", CRITERIA
+    )
+
+    assert llm.extraction_calls == 2
+    assert profile.summary == "Senior developer"
+
+
+@pytest.mark.asyncio
+async def test_batch_applies_the_same_profile_grounding_before_scoring():
+    class UngroundedBatchProfileLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is BatchProfileResult:
+                return BatchProfileResult(candidates=[BatchProfileItem(
+                    documentId=0,
+                    profile=CandidateProfile(
+                        candidateName="Ada",
+                        contact={"email": "invented@example.com"},
+                        summary=None,
+                        skills=["React", "Kubernetes"],
+                        workExperiences=[],
+                        education=[],
+                        languages=[{"name": "German", "level": "C2"}],
+                    ),
+                )])
+            return BatchEvaluationResult(candidates=[BatchEvaluationItem(
+                documentId=0,
+                evaluation=_batch_evaluation(),
+            )])
+
+    analyses = await CVAnalysisService(UngroundedBatchProfileLLM()).analyze_batch_from_texts(
+        ["Ada\nReact"], CRITERIA
+    )
+
+    profile = analyses[0][0]
+    assert profile.contact.email is None
+    assert profile.skills == ["React"]
+    assert profile.languages == []
+
+
+@pytest.mark.asyncio
+async def test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles():
+    llm = FakeBatchLLM()
+
+    analyses = await CVAnalysisService(llm).analyze_batch_from_texts(
+        ["Ada React RAW_SECRET_ONE", "Can React RAW_SECRET_TWO"], CRITERIA
+    )
+
+    assert len(analyses) == 2
+    assert len(llm.prompts) == 2
+    assert "RAW_SECRET_ONE" in llm.prompts[0]
+    assert "RAW_SECRET_ONE" not in llm.prompts[1]
+    assert analyses[0][1].scores[0].criterionLabel == "React tecrübesi"
+
+
+@pytest.mark.asyncio
+async def test_batch_retries_only_missing_evaluation_as_single_profile():
+    class IncompleteBatchEvaluationLLM(FakeBatchLLM):
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.prompts.append(user)
+            if response_model is BatchProfileResult:
+                return BatchProfileResult(
+                    candidates=[
+                        BatchProfileItem(documentId=0, profile=_profile("Ada")),
+                        BatchProfileItem(documentId=1, profile=_profile("Can")),
+                    ]
+                )
+            if response_model is BatchEvaluationResult:
+                return BatchEvaluationResult(
+                    candidates=[
+                        BatchEvaluationItem(
+                            documentId=0,
+                            evaluation=_batch_evaluation(),
+                        )
+                    ]
+                )
+            return _evaluation()
+
+    llm = IncompleteBatchEvaluationLLM()
+    analyses = await CVAnalysisService(llm).analyze_batch_from_texts(
+        ["Ada React", "Can React"], CRITERIA
+    )
+
+    assert len(analyses) == 2
+    assert len(llm.prompts) == 3
+    assert analyses[1][0].candidateName == "Can"
+    assert analyses[1][1].scores[0].criterionId == "react"
+
+
+@pytest.mark.asyncio
+async def test_batch_single_fallback_retries_incomplete_criterion_set():
+    clean_code = Criterion(id="clean_code", label="Clean Code", description="Clean Code")
+    criteria = [*CRITERIA, clean_code]
+
+    def complete_evaluation():
+        return EvaluationResult(
+            scores=[
+                *_evaluation().scores,
+                CriterionScore(
+                    criterionId="clean_code",
+                    criterionLabel="Clean Code",
+                    score=80,
+                    evidence=["Clean Code"],
+                    reason="kanıt",
+                ),
+            ],
+            strengths=["x"],
+            weaknesses=["x"],
+            recommendations=["x"],
+            hrEvaluation="x",
+        )
+
+    class IncompleteFallbackLLM:
+        def __init__(self):
+            self.fallback_calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            profiles = [
+                BatchProfileItem(
+                    documentId=index,
+                    profile=_profile(name).model_copy(update={"skills": ["React", "Clean Code"]}),
+                )
+                for index, name in enumerate(("Ada", "Can"))
+            ]
+            if response_model is BatchProfileResult:
+                return BatchProfileResult(candidates=profiles)
+            if response_model is BatchEvaluationResult:
+                complete = complete_evaluation()
+                return BatchEvaluationResult(candidates=[BatchEvaluationItem(
+                    documentId=0,
+                    evaluation=BatchCandidateEvaluation(
+                        scores=complete.scores,
+                        hrEvaluation=complete.hrEvaluation,
+                    ),
+                )])
+            self.fallback_calls += 1
+            return _evaluation() if self.fallback_calls == 1 else complete_evaluation()
+
+    llm = IncompleteFallbackLLM()
+    analyses = await CVAnalysisService(llm).analyze_batch_from_texts(
+        ["Ada React Clean Code", "Can React Clean Code"], criteria
+    )
+
+    assert llm.fallback_calls == 2
+    assert [score.criterionId for score in analyses[1][1].scores] == [
+        "react",
+        "clean_code",
+    ]
+
+
+def test_batch_budget_leaves_small_documents_untouched():
+    texts = ["a" * 100, "b" * 200]
+    fitted, trimmed = CVAnalysisService.fit_batch_budget(texts)
+    assert fitted == texts
+    assert trimmed == []
+
+
+def test_batch_budget_trims_only_when_total_exceeds_limit():
+    # 5 belge × 20.000 = 100.000 karakter tek prompt'a girerse yerel modelin
+    # context window'unu taşırabilir; toplam bütçe uygulanmalı.
+    texts = ["x" * 20_000] * 5
+    fitted, _ = CVAnalysisService.fit_batch_budget(texts)
+
+    assert sum(len(t) for t in fitted) <= MAX_BATCH_EXTRACTED_CHARS
+    assert all(len(t) > 0 for t in fitted)  # hiçbir belge tamamen silinmez
+
+
+def test_batch_budget_redistributes_unused_share_to_long_documents():
+    # Kısa belgeler payını kullanmazsa artan bütçe uzun belgeye verilmeli —
+    # aksi halde uzun CV gereksiz yere kırpılırdı.
+    texts = ["s" * 10, "L" * 100_000]
+    fitted, _ = CVAnalysisService.fit_batch_budget(texts)
+
+    assert fitted[0] == texts[0]  # kısa belge dokunulmadan kalır
+    half = MAX_BATCH_EXTRACTED_CHARS // 2
+    assert len(fitted[1]) > half  # artan pay uzun belgeye aktarıldı
+
+
+class FakeCorruptingLLM:
+    """İlk extraction'da adı bozar (canlı koşuda gözlenen davranış), düzeltme
+    turunda doğru adı verir."""
+
+    def __init__(self, fix_on_retry: bool = True):
+        self.fix_on_retry = fix_on_retry
+        self.extraction_calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        if response_model is CandidateProfile:
+            self.extraction_calls += 1
+            correct = self.extraction_calls > 1 and self.fix_on_retry
+            return CandidateProfile(
+                candidateName="Semih Buğra Sezer" if correct else "Semhi Bügüra Sezer",
+                contact={}, summary=None, skills=["React"], workExperiences=[],
+                education=[], languages=[],
+            )
+        return _evaluation()
+
+
+SOURCE_WITH_NAME = "Semih Buğra Sezer\nYazılım Geliştirici\nReact"
+
+
+@pytest.mark.asyncio
+async def test_corrupted_candidate_name_triggers_retry_and_is_fixed():
+    llm = FakeCorruptingLLM(fix_on_retry=True)
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(SOURCE_WITH_NAME, CRITERIA)
+
+    assert llm.extraction_calls == 2, "grounding düzeltme turunu tetiklemeliydi"
+    assert profile.candidateName == "Semih Buğra Sezer"
+
+
+@pytest.mark.asyncio
+async def test_still_ungrounded_name_falls_back_to_none():
+    # Düzeltme turu da bozuk ad dönerse uydurma veriyi rapora taşımak yerine
+    # None'a çekilir; çağıranlar dosya adına düşer.
+    llm = FakeCorruptingLLM(fix_on_retry=False)
+    profile, _ = await CVAnalysisService(llm).analyze_from_text(SOURCE_WITH_NAME, CRITERIA)
+
+    assert llm.extraction_calls == 2
+    assert profile.candidateName is None

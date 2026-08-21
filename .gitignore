@@ -1,0 +1,22 @@
+# Ortam ve secret'lar
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Veritabanı (WAL modu iki yardımcı dosya üretir)
+*.db
+*.db-shm
+*.db-wal
+
+# Araç önbellekleri ve kapsam çıktıları
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# İşletim sistemi
+.DS_Store

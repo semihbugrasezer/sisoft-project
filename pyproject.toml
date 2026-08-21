@@ -1,0 +1,43 @@
+[project]
+name = "sisoft-project"
+version = "0.1.0"
+description = "Bağlamı koruyan sohbet ve dinamik kriterlere göre LLM destekli CV analizi yapan Telegram botu"
+readme = "README.md"
+# CI her iki sürümde de test paketini çalıştırır (bkz. .github/workflows/ci.yml).
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "python-telegram-bot>=21.0",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pymupdf>=1.24",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+
+# python-telegram-bot tipler Update.message/effective_chat/Document alanlarını
+# Optional işaretliyor (herhangi bir Update türünü kapsamak için) ama komut/mesaj
+# handler'larına gelen gerçek Update'lerde bu alanlar runtime'da her zaman dolu —
+# 45 union-attr false-positive üretiyordu. Guard eklemek (assert/if) her satırı
+# genişletmeden ekstra bir davranış kazandırmaz; bu modülde bu tek kural kapatılır,
+# geri kalan tüm mypy kontrolleri (arg-type, attr-defined, misc, ...) aktif kalır.
+[[tool.mypy.overrides]]
+module = "app.presentation.telegram.handlers"
+disable_error_code = ["union-attr"]

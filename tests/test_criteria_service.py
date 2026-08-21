@@ -1,0 +1,555 @@
+import pytest
+from pydantic import ValidationError
+
+from app.application.criteria_service import CriteriaService
+from app.domain.errors import IntentUndecidableError, LLMOutputValidationError
+from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
+from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
+
+
+class FakeLLM:
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        label = "Proje yönetimi" if self.calls == 1 else "React tecrübesi"
+        return CriteriaExtractionResult(
+            criteria=[Criterion(id="react", label=label, description="React deneyimi")]
+        )
+
+
+class FakeRepo:
+    def __init__(self):
+        self.saved = None
+
+    async def set_criteria(self, chat_id, criteria):
+        self.saved = criteria
+
+
+@pytest.mark.asyncio
+async def test_retries_and_drops_criterion_not_present_in_user_text():
+    llm = FakeLLM()
+    repo = FakeRepo()
+    criteria = await CriteriaService(llm, repo).define_criteria(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert llm.calls == 2
+    assert [criterion.label for criterion in criteria] == ["React tecrübesi"]
+    assert repo.saved[0]["label"] == "React tecrübesi"
+
+
+def test_keeps_semantic_label_but_drops_unrelated_extra_criterion():
+    criteria = [
+        Criterion(id="react", label="React deneyimi", description="x"),
+        Criterion(id="pm", label="Proje yönetimi", description="x"),
+    ]
+    grounded = CriteriaService._grounded_criteria(
+        criteria, "React tecrübesine göre değerlendir"
+    )
+    assert [criterion.id for criterion in grounded] == ["react"]
+
+
+def test_drops_partially_grounded_label_with_unrequested_terms():
+    criteria = [
+        Criterion(
+            id="react_kubernetes",
+            label="React ve 10 yıl Kubernetes",
+            description="x",
+        )
+    ]
+
+    grounded = CriteriaService._grounded_criteria(criteria, "React deneyimine göre değerlendir")
+
+    assert grounded == []
+
+
+def test_keeps_short_or_symbolic_exact_criterion():
+    criteria = [Criterion(id="cpp", label="C++", description="x")]
+    assert CriteriaService._grounded_criteria(criteria, "C++ bilgisine göre değerlendir")
+
+
+def test_strips_evaluation_command_suffix_from_grounded_label():
+    criteria = [
+        Criterion(
+            id="remote",
+            label="uzaktan çalışma uyumuna göre skorla",
+            description="x",
+        )
+    ]
+
+    grounded = CriteriaService._grounded_criteria(
+        criteria, "uzaktan çalışma uyumuna göre skorla"
+    )
+
+    assert grounded[0].label == "uzaktan çalışma uyumu"
+
+
+class FakeLLMParaphrasedLabel:
+    """Model kullanıcının ifadesini hafifçe yeniden yazar: "React tecrübesi" ->
+    "React deneyimi". Anlam korunur ve etiket kullanıcının kelimesine dayanır."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        return CriteriaExtractionResult(
+            criteria=[Criterion(id="react", label="React deneyimi", description="x")]
+        )
+
+
+@pytest.mark.asyncio
+async def test_semantically_grounded_paraphrase_is_accepted():
+    # Regresyon: bir dönem birebir-etiket zorunluluğu vardı ve parafrazı reddedip
+    # fazladan bir düzeltme turu tetikliyordu. Bu kısıt ödev PDF'inden gelmiyor —
+    # PDF'in kendi JSON örneği userDefinedCriteria içinde "Clean Code" gösteriyor,
+    # oysa düz metin örneğinde kullanıcı "temiz kod yazımı" yazıyor. Gereken
+    # kriterin kullanıcının söylediğine DAYANMASI (grounded olması); kelimesi
+    # kelimesine aynı olması değil.
+    llm = FakeLLMParaphrasedLabel()
+    criteria = await CriteriaService(llm, FakeRepo()).define_criteria(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert llm.calls == 1, "parafraz için gereksiz düzeltme turu tetiklendi"
+    assert criteria[0].label == "React deneyimi"
+
+
+@pytest.mark.asyncio
+async def test_completeness_ignores_generic_criterion_word_in_free_text():
+    llm = FakeLLMParaphrasedLabel()
+    criteria = await CriteriaService(llm, FakeRepo()).define_criteria(
+        1, "React bilgisi benim için önemli"
+    )
+
+    assert llm.calls == 1
+    assert criteria[0].label == "React deneyimi"
+
+
+@pytest.mark.asyncio
+async def test_completeness_does_not_treat_single_criterion_prose_as_missing_terms():
+    llm = FakeLLMParaphrasedLabel()
+    criteria = await CriteriaService(llm, FakeRepo()).define_criteria(
+        1, "React konusunda en az 3 yıl deneyim arıyorum"
+    )
+
+    assert llm.calls == 1
+    assert criteria[0].label == "React deneyimi"
+
+
+def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
+    result = CriteriaExtractionResult(
+        criteria=[
+            Criterion(id=f"criterion_{index}", label=f"Kriter {index}", description="x")
+            for index in range(9)
+        ]
+    )
+    assert len(result.criteria) == 9
+    assert "1 ile 8" not in CRITERIA_EXTRACTOR_SYSTEM
+
+
+@pytest.mark.asyncio
+async def test_free_text_without_keyword_can_define_criteria():
+    class IntentLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            criterion = Criterion(
+                id="react",
+                label="React tecrübesi",
+                description="React deneyimi",
+            )
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=[criterion])
+            return CriteriaExtractionResult(criteria=[criterion])
+
+    repo = FakeRepo()
+    criteria = await CriteriaService(IntentLLM(), repo).define_if_requested(
+        1, "React tecrübesi benim için önemli"
+    )
+
+    assert [criterion.label for criterion in criteria] == ["React tecrübesi"]
+    assert repo.saved[0]["id"] == "react"
+
+
+@pytest.mark.asyncio
+async def test_natural_language_criteria_uses_dedicated_extraction_before_save():
+    class IntentThenExtractionLLM:
+        def __init__(self):
+            self.response_models = []
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.response_models.append(response_model)
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(
+                    intent="criteria",
+                    criteria=[Criterion(id="react", label="React tecrübesi", description="x")],
+                )
+            return CriteriaExtractionResult(
+                criteria=[
+                    Criterion(id="react", label="React tecrübesi", description="x"),
+                    Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x"),
+                ]
+            )
+
+    llm = IntentThenExtractionLLM()
+    repo = FakeRepo()
+    criteria = await CriteriaService(llm, repo).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre değerlendir",
+    )
+
+    assert llm.response_models == [CriteriaIntentResult, CriteriaExtractionResult]
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+    assert [item["id"] for item in repo.saved] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_intent_and_extractor_semantic_duplicate_is_saved_once():
+    class DuplicateRemoteLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            remote = Criterion(
+                id="remote_compatible",
+                label="uzaktan çalışma uyumlu",
+                description="x",
+            )
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=[remote])
+            return CriteriaExtractionResult(
+                criteria=[
+                    remote.model_copy(
+                        update={"id": "remote_compatibility", "label": "uzaktan çalışma uyumu"}
+                    )
+                ]
+            )
+
+    criteria = await CriteriaService(DuplicateRemoteLLM(), FakeRepo()).define_if_requested(
+        1, "uzaktan çalışma uyumuna göre değerlendir"
+    )
+
+    assert [criterion.label for criterion in criteria] == ["uzaktan çalışma uyumlu"]
+
+
+@pytest.mark.asyncio
+async def test_partial_extraction_retries_and_combines_grounded_criteria():
+    class PartialThenMissingLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            if self.calls == 1:
+                return CriteriaExtractionResult(
+                    criteria=[Criterion(id="react", label="React tecrübesi", description="x")]
+                )
+            return CriteriaExtractionResult(
+                criteria=[
+                    Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x"),
+                ]
+            )
+
+    llm = PartialThenMissingLLM()
+    repo = FakeRepo()
+    criteria = await CriteriaService(llm, repo).define_criteria(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert llm.calls == 2
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.parametrize(
+    "separator",
+    [" / ", "\n", " ile "],
+    ids=["slash", "newline", "repeated-ile"],
+)
+@pytest.mark.asyncio
+async def test_free_text_list_separators_do_not_allow_partial_criteria(separator):
+    class PartialThenFocusedLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if "temiz kod" in user and "React" not in user:
+                criteria = [
+                    Criterion(id="clean_code", label="temiz kod yazımı", description="x")
+                ]
+            elif "uzaktan" in user and "React" not in user:
+                criteria = [
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            else:
+                criteria = [
+                    Criterion(id="react", label="React tecrübesi", description="x")
+                ]
+            return CriteriaExtractionResult(criteria=criteria)
+
+    criteria = await CriteriaService(PartialThenFocusedLLM(), FakeRepo()).define_criteria(
+        1,
+        separator.join(
+            ["React tecrübesi", "temiz kod yazımı", "uzaktan çalışma uyumu"]
+        ),
+    )
+
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_intent_and_extractor_partial_results_are_combined_before_missing_retry():
+    class LiveGemmaPatternLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(
+                    intent="criteria",
+                    criteria=[
+                        Criterion(id="react", label="React tecrübesi", description="x"),
+                        Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
+                    ],
+                )
+            if self.calls == 2:
+                return CriteriaExtractionResult(
+                    criteria=[Criterion(id="react", label="React tecrübesi", description="x")]
+                )
+            assert "tekrar etme" in user
+            return CriteriaExtractionResult(
+                criteria=[
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            )
+
+    llm = LiveGemmaPatternLLM()
+    repo = FakeRepo()
+    criteria = await CriteriaService(llm, repo).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert llm.calls == 3
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_missing_retry_focuses_weak_model_on_only_uncovered_text():
+    class RepeatsFirstCriterionUnlessFocusedLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            react = Criterion(id="react", label="React tecrübesi", description="x")
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(
+                    intent="criteria",
+                    criteria=[
+                        react,
+                        Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
+                    ],
+                )
+            if self.calls == 2 or "React tecrübesi" in user:
+                return CriteriaExtractionResult(criteria=[react])
+            return CriteriaExtractionResult(
+                criteria=[
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            )
+
+    criteria = await CriteriaService(
+        RepeatsFirstCriterionUnlessFocusedLLM(), FakeRepo()
+    ).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_missing_retry_extracts_each_uncovered_segment_separately():
+    class OneCriterionPerCallLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.calls += 1
+            react = Criterion(id="react", label="React tecrübesi", description="x")
+            if response_model is CriteriaIntentResult or self.calls == 2:
+                result = [react]
+            elif "temiz kod" in user:
+                result = [Criterion(id="clean_code", label="temiz kod yazımı", description="x")]
+            else:
+                result = [
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=result)
+            return CriteriaExtractionResult(criteria=result)
+
+    llm = OneCriterionPerCallLLM()
+    criteria = await CriteriaService(llm, FakeRepo()).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert llm.calls == 4
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_uses_configured_intent_model():
+    class IntentModelSpyLLM:
+        def __init__(self):
+            self.seen_models: list[str | None] = []
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.seen_models.append(model)
+            return CriteriaIntentResult(intent="chat", criteria=[])
+
+    llm = IntentModelSpyLLM()
+    service = CriteriaService(llm, FakeRepo(), intent_model="qwen2.5:1.5b")
+
+    result = await service.define_if_requested(1, "bugün nasılsın?")
+
+    assert result is None
+    assert llm.seen_models == ["qwen2.5:1.5b"]
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_defaults_to_main_model_when_unconfigured():
+    class IntentModelSpyLLM:
+        def __init__(self):
+            self.seen_models: list[str | None] = []
+
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.seen_models.append(model)
+            return CriteriaIntentResult(intent="chat", criteria=[])
+
+    llm = IntentModelSpyLLM()
+    service = CriteriaService(llm, FakeRepo())  # intent_model verilmedi
+
+    await service.define_if_requested(1, "bugün nasılsın?")
+
+    assert llm.seen_models == [None]  # OllamaClient bunu ana modele düşürür
+
+
+@pytest.mark.asyncio
+async def test_define_if_requested_raises_explicit_error_when_intent_undecidable():
+    # Zayıf modellerde (canlı testte 0.5B) intent-classification şemaya uygun JSON
+    # üretemeyebilir. Mesajı sessizce "chat" saymak, kullanıcının kriter tanımını
+    # kaybetmek olurdu ve kullanıcı bunu ancak CV gönderdiğinde fark ederdi —
+    # dinamik kriter yakalama ödevin çekirdek gereksinimi. Açık hata + yönlendirme
+    # tercih edilir.
+    class FailingIntentLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            raise LLMOutputValidationError("Model beklenen formatta yanıt üretemedi.")
+
+    with pytest.raises(IntentUndecidableError) as exc_info:
+        await CriteriaService(FailingIntentLLM(), FakeRepo()).define_if_requested(
+            1, "React tecrübesi benim için önemli"
+        )
+
+    # Kullanıcı ne yapacağını bilmeli
+    assert "/criteria" in exc_info.value.user_message
+
+
+def test_blank_or_duplicate_criteria_are_rejected():
+    with pytest.raises(ValidationError):
+        Criterion(id=" ", label="React", description="x")
+    with pytest.raises(ValidationError):
+        CriteriaExtractionResult(
+            criteria=[
+                Criterion(id="react", label="React", description="x"),
+                Criterion(id="react", label="Clean Code", description="x"),
+            ]
+        )
+
+
+class FakeIntentFailsThenMainWorks:
+    """Küçük intent modeli şema hatası verir; ana model (model=None) başarır."""
+
+    def __init__(self):
+        self.models_tried = []
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.models_tried.append(model)
+        if model is not None:
+            raise LLMOutputValidationError("küçük model şema üretemedi")
+        if response_model is CriteriaExtractionResult:
+            return CriteriaExtractionResult(
+                criteria=[Criterion(id="react", label="React tecrübesi", description="x")]
+            )
+        return CriteriaIntentResult(
+            intent="criteria",
+            criteria=[Criterion(id="react", label="React tecrübesi", description="x")],
+        )
+
+
+@pytest.mark.asyncio
+async def test_intent_failure_retries_with_main_model():
+    # Sessiz hata regresyonu: küçük intent modeli JSON üretemezse mesaj doğrudan
+    # "chat" sayılıyordu ve kullanıcının kriter tanımı sessizce kayboluyordu.
+    llm = FakeIntentFailsThenMainWorks()
+    criteria = await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
+        1, "React tecrübesi benim için önemli"
+    )
+
+    assert llm.models_tried == ["tiny", None, None], "ana model veya özel extraction denenmedi"
+    assert criteria is not None and criteria[0].label == "React tecrübesi"
+
+
+class FakeAlwaysFailsIntent:
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        raise LLMOutputValidationError("şema hatası")
+
+
+@pytest.mark.asyncio
+async def test_intent_failure_on_both_models_raises_explicit_error():
+    # Küçük model başarısız olunca ana model denenir; o da başarısızsa sessizce
+    # sohbete düşmek yerine açık hata dönülür.
+    llm = FakeAlwaysFailsIntent()
+    with pytest.raises(IntentUndecidableError):
+        await CriteriaService(llm, FakeRepo(), intent_model="tiny").define_if_requested(
+            1, "merhaba"
+        )
+
+    assert llm.calls == 2, "ana model denenmeden hata dönüldü"
+
+
+class FakeIntentUngroundedThenGrounded:
+    """Intent çağrısı kullanıcının hiç bahsetmediği bir kriter uydurur;
+    define_criteria düzeltme turu gerçek kriteri verir."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        self.calls += 1
+        if response_model is CriteriaIntentResult:
+            return CriteriaIntentResult(
+                intent="criteria",
+                criteria=[Criterion(id="pm", label="Proje yönetimi", description="x")],
+            )
+        return CriteriaExtractionResult(
+            criteria=[Criterion(id="react", label="React tecrübesi", description="x")]
+        )
+
+
+@pytest.mark.asyncio
+async def test_natural_language_path_shares_grounding_correction():
+    # Doğal dil akışı ile /criteria akışı AYNI doğrulamadan geçmeli: intent çağrısı
+    # kullanıcı metnine dayanmayan bir kriter üretirse düzeltme turu (define_criteria
+    # içinde) devreye girmeli, uydurma kriter kaydedilmemeli.
+    llm = FakeIntentUngroundedThenGrounded()
+    criteria = await CriteriaService(llm, FakeRepo()).define_if_requested(
+        1, "React tecrübesine göre değerlendir"
+    )
+
+    assert criteria is not None
+    assert criteria[0].label == "React tecrübesi"
