@@ -12,14 +12,18 @@ botu:
    farklı şablonlardaki CV'leri doğrular, ortak bir `CandidateProfile` JSON
    şemasına normalize eder ve tekli ya da çoklu analiz üretir.
 
-Her iki akış da aynı katmanlı mimariyi ve `LLMPort` sözleşmesini kullanır. Sistem
-yerel veya uzak bir LLM ucuyla çalışabilir; varsayılan ve canlı kabul referansı
-**Ollama + `qwen2.5:7b`**'dir. **LM Studio** protokol entegrasyonu canlı
-doğrulanmıştır; bu makinedeki `google/gemma-4-e4b` modeli güncel kabul koşusunda
-tüm kalite kapılarını tutarlı geçememiştir. **vLLM** aynı OpenAI-uyumlu adaptörle
-desteklenir ancak bu donanımda canlı çalıştırılmamıştır. Çıkarım kalitesi modele
-bağlıdır; ölçümler ve kanıt sınırları [Canlı Doğrulama](docs/VALIDATION.md)
-belgesindedir.
+Her iki akış da aynı katmanlı mimariyi ve `LLMPort` sözleşmesini kullanır. PDF'nin
+zorunlu LLM şartı — **Ollama, vLLM veya LM Studio** seçeneklerinden en az biri —
+varsayılan ve canlı kabul referansı **Ollama + `qwen2.5:7b`** ile karşılanır.
+
+Sistem yapılandırmayla yerel veya uzak bir LLM ucuna bağlanabilir. Ek
+`OpenAICompatibleClient` adaptörüyle **LM Studio** ve **vLLM** sunucuları
+desteklenir. LM Studio'da hem sohbet hem JSON-schema protokolü canlı
+doğrulanmıştır; ancak bu makinedeki `google/gemma-4-e4b` modeli ödevin tam kalite
+kabulünü tutarlı geçememiştir. vLLM'in güncel sunucu sözleşmesi kullanılan
+`response_format` yapısıyla uyumludur, fakat vLLM bu donanımda canlı
+çalıştırılmamıştır. Entegrasyon uyumluluğu ile model kalitesi aynı şey değildir;
+ölçümler ve kanıt sınırları [Canlı Doğrulama](docs/VALIDATION.md) belgesindedir.
 
 ## Demo
 
@@ -51,10 +55,19 @@ flowchart LR
     A --> D["Domain<br/>(şemalar + skorlama)"]
     A --> PDF[PDF Validation]
     A --> DB[(SQLite)]
-    A --> LLM[LLM Port]
-    LLM --> O["Ollama<br/>/api/chat"]
-    LLM --> C["LM Studio / vLLM<br/>/v1/chat/completions"]
+    A --> PORT["LLMPort<br/>(domain sözleşmesi)"]
+
+    CFG{"LLM_BACKEND<br/>container.py"} -->|ollama| OC[OllamaClient]
+    CFG -->|openai_compatible| OAC[OpenAICompatibleClient]
+    OC -. uygular .-> PORT
+    OAC -. uygular .-> PORT
+    OC --> O["Ollama sunucusu<br/>/api/chat"]
+    OAC --> C["LM Studio veya vLLM sunucusu<br/>/v1/chat/completions"]
 ```
+
+Düz oklar çalışma zamanı çağrılarını, kesik oklar adaptörlerin `LLMPort`
+sözleşmesini uyguladığını gösterir. `container.py` yalnızca bir adaptör seçip aynı
+nesneyi sohbet, kriter çıkarımı ve CV analizi akışlarına enjekte eder.
 
 İşlem hattı:
 
