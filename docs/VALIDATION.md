@@ -1,7 +1,8 @@
 # Deneysel Doğrulama
 
-Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel `qwen2.5:7b`
-sunucusuna (Ollama) karşı canlı çalıştırmalarla test edildi — taklit LLM
+Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel
+`qwen2.5:7b` (Ollama) ve `google/gemma-4-e4b` (LM Studio) sunucularına karşı
+canlı çalıştırmalarla test edildi — taklit LLM
 istemcileriyle yürütülen otomatik test paketine ek olarak (kapsam ve sayı için
 tek kaynak: [TESTING.md](./TESTING.md)). Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
@@ -34,8 +35,9 @@ Ollama `--full` tekrar koşusu `origin/main` `4ddb059` üzerinde çalıştırıl
 | Ollama — son `--full` kriter tekrarı | ✅ 3/3, tekrarsız | 129.0s; tam üç kriter çıktı, yakın anlamlı uzaktan-çalışma etiketi çoğaltılmadı |
 | Ollama — son `--full` tekli CV tekrarı | ✅ PASS | 247.9s; çift kaynak kanıt grounding, 3/3 skor, dolu nitel bölümler ve Markdown başlıkları geçti |
 | Ollama — son `--full` 5-CV batch | ✅ PASS | 991.3s; üç kaynak-dışı skor 0'a indirildi; top-3 ortalamaları bağımsız doğrulandı (`90.0 / 55.0 / 55.0`), nihai JSON şeması geçti |
-| LM Studio — düzeltme öncesi kriter akışı | ⚠️ 2/3 kriter | Birleşik intent çıktısı uzaktan çalışma kriterini atladı; bu bulgu özel extraction turunun her criteria niyetinde zorunlu olmasına yol açtı |
-| LM Studio — düzeltme sonrası tekrar | ⚠️ güvenli red | API ve JSON-schema entegrasyonu çalıştı. `gemma-4-e4b`, intent'te 2/3 ve özel extraction'da 1/3 kriter üretti; eksik-terim turunda da React'i tekrarladı. Servis kısmi listeyi kaydetmeyip kontrollü `LLMOutputValidationError` döndürdü (son koşu 25.4s) |
+| LM Studio — ara kriter koşusu (hardening öncesi) | ⚠️ güvenli red | API ve JSON-schema çalıştı; model eksik-terim turunda React'i tekrarladı ve kısmi liste kaydedilmedi |
+| LM Studio — güncel kriter + tekli CV | ✅ PASS | 58.7s kriter (3/3, temiz etiketler) + 151.7s tekli CV; ortak JSON, 3/3 skor, nitel bölümler ve Markdown geçti |
+| LM Studio — güncel 5-CV batch | ✅ PASS | 1086.6s; ilk batch evaluation'da eksik/tekrarlı `documentId=1..4` yalnız ilgili profiller için tekli retry ile tamamlandı. Top-3 ortalamaları (`78.33 / 76.67 / 58.33`) bağımsız doğrulandı ve nihai JSON şeması geçti |
 
 Audit sırasında kabul ölçerinin yalnız çekim farklarını tanıyıp PDF'nin açıkça
 izin verdiği anlamsal eşdeğerleri (`tecrübe`/`deneyim`, `temiz kod`/`Clean Code`)
@@ -63,7 +65,7 @@ top-3 JSON ürettiğini doğruladı.
 | 5 | Model-kapasitesi sınırı (LM Studio, `qwen2.5-0.5b-instruct`) | — | Küçük model, serbest metin intent-classification'da şemaya uygun JSON'u iki denemede de üretemedi; kullanıcı `LLMOutputValidationError`'ın kontrollü hata mesajını gördü. | Entegrasyonun kendisi doğru çalıştı (hata yakalandı, retry denendi, kullanıcıya çökme yerine anlaşılır mesaj döndü) — darboğaz model kapasitesiydi, kod değil. Bot varsayılan Ollama yapılandırmasına geri alındı. **Bu teşhis daha sonra koşu #8'de doğrulandı:** aynı backend, 4B'lik bir modelle aynı adımı sorunsuz geçti. |
 | 6 | Gerçek (anonimleştirilmiş) bir CV, Türkçe aksanlı karakterler içeriyor (tekli analiz, canlı Telegram) | ~2-3 dk | Sohbet bağlamı, dinamik kriter tanımlama ve tekli CV Markdown raporu uçtan uca doğru çalıştı. Ancak `candidateName` alanında harf yer değiştirmesi gözlendi (ör. "ğ" içeren bir isimde iki harf yer değiştirdi) — Türkçe aksanlı karakterlerde model kaynaklı bir hata. | **Çözüldü.** Prompt zaten "birebir aktar" diyordu; prompt'a güvenmek yetmedi. `is_grounded_in_source` (app/domain/grounding.py) ile deterministik kaynak-doğrulama eklendi: ad kaynak metinde geçmiyorsa bir düzeltme turu denenir, yine tutmazsa alan None'a çekilir ve çağıran dosya adına düşer. Bozulmuş ad artık rapora taşınmaz. |
 | 7 | 5 gerçek CV batch analizi (canlı Telegram, `LLM_TIMEOUT=1200`) | 852.0s (259.6s extraction + 592.4s evaluation) | `MultiAnalysisResponse` şemasına birebir uyan top-3 JSON döndü; sıralama (90.0/85.0/85.0) doğru, `hrEvaluation` temiz Türkçe, mixed-script/English leak yok. Önceki bir koşuda `LLM_TIMEOUT=600` evaluation adımını yarıda kesmişti (`LLMUnavailableError`, kontrollü hata mesajı — kod hatası değil). | `LLM_TIMEOUT` 600 → 1200 yükseltildi; bu donanımda batch evaluation tek başına 600s'yi aşabiliyor. Sonraki koşu sorunsuz tamamlandı. |
-| 8 | **LM Studio + `google/gemma-4-e4b` (4B), uçtan uca** — koşu #5'in açık bıraktığı boşluğu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama protokol düzeyinde çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Kalite farkı:** üç kriterlik girdiden yalnızca bir kriter çıktı (`qwen2.5:7b` üçünü de çıkarıyor). | 2026-08-21 audit'i kısmi kriterin üretimde kabul edildiğini gösterdi. Servis artık intent/extractor sonuçlarını grounded biçimde birleştirir, kaynak kapsamını denetler ve tek düzeltme turundan sonra hâlâ eksikse kaydetmek yerine kontrollü hata verir. Güncel Gemma koşusu bu güvenli reddi doğruladı. |
+| 8 | **LM Studio + `google/gemma-4-e4b` (4B), ilk uçtan uca koşu** — koşu #5'in protokol boşluğunu kapatır | 25.7s + 3.9s + 115.1s | Üç aşama protokol düzeyinde çalıştı. `candidateName` doğru ("Caner Bulut"), skills doğru, `hrEvaluation` temiz Türkçe. **Tarihsel kalite bulgusu:** üç kriterlik girdiden yalnızca bir kriter çıktı. | Bu bulgu kısmi extraction ve batch tamlık kontrollerinin eklenmesine yol açtı. Güncel kriter, tekli CV ve 5-CV Top-3 sonuçları yukarıdaki audit tablosundadır. |
 
 > **Not (Koşu 1 hakkında güncelleme):** 1. koşuda gözlenen parafraz kabulü
 > ("React tecrübesi" → "React deneyimi") kasıtlı bir tasarım tercihiydi. Bir ara
@@ -80,7 +82,7 @@ nesnesinin kısıtlı JSON şemasıdır:
 
 - Kriter çıkarımı: ~70 saniye.
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
-- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
+- 5 CV batch (Ollama nominal extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
   580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Yani **~8-17
   dakika** aralığı; en güncel `--full` koşusu 991.3s = 16.5 dakikadır.
 
@@ -97,8 +99,8 @@ sözleşmesini test eder — model kalitesini değil.
 yüklenip projenin **gerçek servisleri** üzerinden çalıştırıldı — mock yok,
 `CriteriaService` ve `CVAnalysisService` doğrudan çağrıldı:
 
-> Aşağıdaki tablo düzeltme öncesi tarihsel koşudur. Güncel güvenli-red sonucu
-> bu belgenin başındaki 2026-08-21 audit tablosundadır.
+> Aşağıdaki tablo düzeltme öncesi tarihsel koşudur. Güncel tam kabul
+> sonuçları bu belgenin başındaki 2026-08-21 audit tablosundadır.
 
 | Aşama | Sonuç | Süre |
 |---|---|---|
@@ -114,13 +116,15 @@ deneyimi çok güçlüdür."* — temiz Türkçe, dil sızıntısı yok.
 sorunsuz çalıştı. "Darboğaz model kapasitesiydi, kod değil" teşhisi böylece
 ölçümle doğrulanmış oldu.
 
-**Gözlenen model farkı ve kabul boşluğu:** gemma-4-e4b, üç kriterlik bir
+**Tarihsel model farkı ve kapatılan kabul boşluğu:** gemma-4-e4b, ilk koşuda üç kriterlik bir
 girdiden ("React tecrübesi, temiz kod yazımı, uzaktan çalışma uyumu")
 yalnızca birini çıkardı; `qwen2.5:7b` (Ollama) aynı girdiden üçünü de
 çıkarıyor. Eski servis şema-uyumlu ve grounded olan bu kısmi listeyi kabul
-ediyordu. Güncel servis kaynak kapsamını ayrıca denetleyerek eksik sonucu
-reddeder. Böylece model seçiminin kalite etkisi görünür kalırken eksiklik
-sessizce kalıcı veriye dönüşmez.
+ediyordu. Güncel servis kaynak kapsamını denetler, eksik parçaları ayrı
+structured-output çağrılarıyla tamamlar ve yine eksikse sonucu reddeder. Batch
+evaluation'da da yalnız eksik/tekrarlı belge kimlikleri tekli şemayla tamamlanır;
+geçerli toplu sonuçlar yeniden üretilmez. Güncel Gemma kriter, tekli CV ve 5-CV
+Top-3 koşularını geçti.
 
 **vLLM** ayrıca canlı test edilmedi — Apple Silicon GPU desteklemediği için bu
 ortamda çalıştırılamadı. Aynı `response_format` sözleşmesini uyguladığı resmi
@@ -192,11 +196,12 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 - **20.000 karakter extraction sınırı** — çok uzun CV'lerde metin bu sınıra
   kırpılır (context/timeout koruması). Kullanıcı artık Telegram'da bir uyarı
   mesajıyla bilgilendiriliyor (`TRUNCATED_WARNING`, `handlers.py`).
-- **Batch'te CV başına paralel LLM isteği yok** — bkz.
-  [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Batch başına iki LLM çağrısı"
+- **Batch'te varsayılan olarak CV başına paralel LLM isteği yok** — bkz.
+  [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Nominal batch başına iki LLM çağrısı"
   kararı. PDF validation/extraction paraleldir; LLM extraction/evaluation
   tüm belgeler için tek bir toplu istektir (tek yerel model sunucusunu N ayrı
-  istekle boğmamak için bilinçli tercih).
+  istekle boğmamak için bilinçli tercih). Yalnız eksik/tekrarlı evaluation
+  belgeleri tekli retry alır.
 - ~~**Nitel rapor alanları boş kalabiliyor**~~ — **çözüldü.** Kabul testinin ilk
   koşusunda `qwen2.5:7b`, kriterlerin üçünü de doğru puanladığı hâlde
   `strengths`/`weaknesses`/`recommendations` bölümlerinden en az birini boş
@@ -211,6 +216,6 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
   düzeltme turu ile ele alındı (koşu #6); modelin kendisi düzelmedi.
 - **Model seçimi bir mimari parametredir** — `qwen2.5-0.5b-instruct` (0.5B)
   yapılandırılmış JSON üretemedi (koşu #5); `google/gemma-4-e4b` (4B) üç
-  aşamayı da geçti ama üç kriterden birini çıkardı (koşu #8);
-  `qwen2.5:7b` üçünü de çıkarıyor. Aynı kod, farklı çıkarım kalitesi.
-  Üretimde 7B+ sınıfı bir model önerilir.
+  aşamayı da geçti ama ilk koşuda üç kriterden birini çıkardı (koşu #8).
+  Güncel servis eksik kriter/belgeleri dar kapsamlı retry ile tamamladı ve aynı
+  model tam kabulden geçti. Model kapasitesi toplam süreyi hâlâ belirgin etkiler.

@@ -19,10 +19,10 @@ botunda birleştirir:
 Her iki akış da aynı `LLMPort` sözleşmesini kullanır. Varsayılan ve tam kabul
 testinden geçmiş yapılandırma **Ollama + `qwen2.5:7b`**'dir.
 `OpenAICompatibleClient` adaptörü üzerinden yerel veya uzak **LM Studio** ve
-**vLLM** sunucularına da bağlanılabilir. LM Studio protokolü canlı doğrulanmıştır;
-ancak bu makinedeki `google/gemma-4-e4b` modeli kriter eksiksizliği kalite kapısını
-geçememiştir. vLLM protokol uyumluluğu doğrulanmış, bu donanımda canlı
-çalıştırılmamıştır. Ayrıntılı sonuçlar ve kanıt sınırları:
+**vLLM** sunucularına da bağlanılabilir. **LM Studio +
+`google/gemma-4-e4b`** ile kriter, tekli CV ve 5 CV Top-3 akışları canlı
+doğrulanmıştır. vLLM aynı OpenAI-uyumlu protokolü kullanır; bu donanımda
+canlı çalıştırılmamıştır. Ayrıntılı sonuçlar, süreler ve kanıt sınırları:
 **[Canlı Doğrulama](docs/VALIDATION.md)**.
 
 ## Demo

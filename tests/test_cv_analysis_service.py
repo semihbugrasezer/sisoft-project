@@ -329,6 +329,40 @@ async def test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles():
     assert analyses[0][1].scores[0].criterionLabel == "React tecrübesi"
 
 
+@pytest.mark.asyncio
+async def test_batch_retries_only_missing_evaluation_as_single_profile():
+    class IncompleteBatchEvaluationLLM(FakeBatchLLM):
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            self.prompts.append(user)
+            if response_model is BatchProfileResult:
+                return BatchProfileResult(
+                    candidates=[
+                        BatchProfileItem(documentId=0, profile=_profile("Ada")),
+                        BatchProfileItem(documentId=1, profile=_profile("Can")),
+                    ]
+                )
+            if response_model is BatchEvaluationResult:
+                return BatchEvaluationResult(
+                    candidates=[
+                        BatchEvaluationItem(
+                            documentId=0,
+                            evaluation=_batch_evaluation(),
+                        )
+                    ]
+                )
+            return _evaluation()
+
+    llm = IncompleteBatchEvaluationLLM()
+    analyses = await CVAnalysisService(llm).analyze_batch_from_texts(
+        ["Ada React", "Can React"], CRITERIA
+    )
+
+    assert len(analyses) == 2
+    assert len(llm.prompts) == 3
+    assert analyses[1][0].candidateName == "Can"
+    assert analyses[1][1].scores[0].criterionId == "react"
+
+
 def test_batch_budget_leaves_small_documents_untouched():
     texts = ["a" * 100, "b" * 200]
     fitted, trimmed = CVAnalysisService.fit_batch_budget(texts)

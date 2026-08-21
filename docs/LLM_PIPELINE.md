@@ -193,10 +193,14 @@ görünür olur ve her aşama ayrı ayrı test edilebilir.
 
 ## Çoklu CV: Toplu (Batched) İstek
 
-5 CV için CV başına 2 çağrı (toplam 10 istek) yerine **iki toplu istek**
+5 CV için CV başına 2 çağrı (toplam 10 istek) yerine normal akışta **iki toplu istek**
 kullanılır: tüm belgeler tek extraction çağrısında profillere, tüm profiller
 tek evaluation çağrısında değerlendirmelere çevrilir. Gerekçe ve ölçümler
 [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
+
+Model batch evaluation'da bir `documentId`yi atlar veya tekrarlarsa geçerli
+sonuçlar korunur, yalnız sorunlu profiller tekli `EvaluationResult` şemasıyla
+tamamlanır. Tamamlama yine başarısızsa kısmi Top-3 dönmez.
 
 PDF doğrulama ve metin çıkarma aşaması bundan bağımsız olarak paraleldir
 (`asyncio.gather`).

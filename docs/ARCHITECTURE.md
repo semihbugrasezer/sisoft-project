@@ -151,8 +151,9 @@ sequenceDiagram
 dosyaları paralel doğrular (`asyncio.gather`; ilk hatada kesmez — hepsi
 biter, sonra tamamı reddedilir) ve LLM extraction/
 evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
-çalıştırır — bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Batch başına
-iki LLM çağrısı".
+çalıştırır. Yalnız eksik/tekrarlı evaluation belgeleri tekli şemayla tamamlanır
+— bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Nominal batch başına iki LLM
+çağrısı".
 
 ## LLM Backend'leri
 
@@ -163,7 +164,7 @@ bunlardan **en az biri** yeterli. Bu proje zorunlu kapsamın ötesine geçip
 | Motor | Adaptör | Uç | Durum |
 |---|---|---|---|
 | Ollama | `OllamaClient` | `/api/chat` (Ollama'ya özgü) | `qwen2.5:7b` ile canlı doğrulandı |
-| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | Protokol canlı doğrulandı; yerel `google/gemma-4-e4b` güncel kalite kabulünü tutarlı geçemedi |
+| LM Studio | `OpenAICompatibleClient` | `/v1/chat/completions` | Yerel `google/gemma-4-e4b` ile kriter, tekli CV ve 5-CV Top-3 akışları canlı geçti |
 | vLLM | `OpenAICompatibleClient` | `/v1/chat/completions` | Aynı protokol; donanım kısıtı nedeniyle canlı test edilmedi |
 
 **"OpenAI-uyumlu" bir protokol adıdır, servis adı değil.** HTTP biçimini
