@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from collections import Counter
 
@@ -87,23 +88,10 @@ class CVAnalysisService:
             CV_EXTRACTOR_SYSTEM, f"SOURCE_TEXT:\n{text}", CandidateProfile
         )
         profile = await self._ground_candidate_name(profile, text)
-        profile = self._ground_profile_skills(profile, text)
+        profile = await self._ground_profile_with_retry(profile, text)
 
-        criteria_json = "\n".join(
-            f"- id={c.id}; label={c.label}; description={c.description}; "
-            f"evidenceHints={', '.join(c.evidenceHints) or 'yok'}"
-            for c in criteria
-        )
-        user_prompt = (
-            f"CANDIDATE_PROFILE (JSON):\n{profile.model_dump_json()}\n\n"
-            f"CRITERIA:\n{criteria_json}\n\n"
-            "criterionId ve criterionLabel alanlarında yukarıdaki değerleri birebir kullan."
-        )
-        evaluation = await self._llm.structured_chat(
-            CANDIDATE_EVALUATOR_SYSTEM, user_prompt, EvaluationResult
-        )
-
-        return profile, self._normalize_evaluation(evaluation, criteria, profile, text)
+        evaluation = await self._evaluate_profile(profile, criteria, text)
+        return profile, evaluation
 
     async def _ground_candidate_name(
         self, profile: CandidateProfile, source_text: str
@@ -141,20 +129,123 @@ class CVAnalysisService:
         return retried.model_copy(update={"candidateName": None})
 
     @staticmethod
-    def _ground_profile_skills(
+    def _ground_profile(
         profile: CandidateProfile, source_text: str
     ) -> CandidateProfile:
-        grounded = [
+        def grounded(value: str | None) -> str | None:
+            return value if value is None or is_grounded_in_source(value, source_text) else None
+
+        contact = profile.contact.model_copy(update={
+            field: grounded(getattr(profile.contact, field))
+            for field in ("email", "phone", "location")
+        })
+        skills = [
             skill for skill in profile.skills
             if is_grounded_in_source(skill, source_text)
         ]
-        if len(grounded) == len(profile.skills):
+        work_experiences = []
+        for work_item in profile.workExperiences:
+            values = {
+                field: grounded(getattr(work_item, field))
+                for field in ("company", "title", "startDate", "endDate", "description")
+            }
+            if any(values.values()):
+                work_experiences.append(work_item.model_copy(update=values))
+        education = []
+        for education_item in profile.education:
+            values = {
+                field: grounded(getattr(education_item, field))
+                for field in ("institution", "degree", "field", "graduationDate")
+            }
+            if any(values.values()):
+                education.append(education_item.model_copy(update=values))
+        languages = [
+            language.model_copy(update={"level": grounded(language.level)})
+            for language in profile.languages
+            if is_grounded_in_source(language.name, source_text)
+        ]
+        normalized = profile.model_copy(update={
+            "contact": contact,
+            "summary": grounded(profile.summary),
+            "skills": skills,
+            "workExperiences": work_experiences,
+            "education": education,
+            "languages": languages,
+        })
+        if normalized != profile:
+            logger.warning("Kaynağa dayanmayan profil alanları normalize JSON'dan çıkarıldı")
+        return normalized
+
+    async def _ground_profile_with_retry(
+        self, profile: CandidateProfile, source_text: str
+    ) -> CandidateProfile:
+        normalized = self._ground_profile(profile, source_text)
+        if normalized == profile and not self._has_missing_source_section(
+            profile, source_text
+        ):
             return profile
-        logger.warning(
-            "Kaynakta bulunmayan %d skill normalize profilden çıkarıldı",
-            len(profile.skills) - len(grounded),
+
+        logger.warning("Profil grounding/tamlık kontrolü başarısız; tek düzeltme turu deneniyor")
+        retried = await self._llm.structured_chat(
+            CV_EXTRACTOR_SYSTEM
+            + " DÜZELTME: Tüm dolu profil değerlerini SOURCE_TEXT içinden birebir kopyala."
+            " Özellikle summary alanını yeniden yazma; kısa bir kaynak alıntısı kullan.",
+            f"SOURCE_TEXT:\n{source_text}",
+            CandidateProfile,
         )
-        return profile.model_copy(update={"skills": grounded})
+        # Aday adı bir önceki özel kontrolün sonucudur; genel alan düzeltmesi bu
+        # doğrulanmış değeri değiştiremez.
+        retried = retried.model_copy(update={"candidateName": profile.candidateName})
+        return self._ground_profile(retried, source_text)
+
+    @staticmethod
+    def _has_missing_source_section(profile: CandidateProfile, source_text: str) -> bool:
+        expected_sections = (
+            (profile.summary, r"(?:özet|ozet|summary|hakkımda|hakkimda)"),
+            (profile.skills, r"(?:yetenekler|beceriler|skills|teknolojiler)"),
+            (profile.workExperiences, r"(?:iş deneyimi|is deneyimi|experience|employment)"),
+            (profile.education, r"(?:eğitim|egitim|education)"),
+            (profile.languages, r"(?:diller|languages)"),
+        )
+        normalized_source = source_text.casefold()
+        return any(
+            not value and re.search(rf"(?m)^\s*{heading}\b", normalized_source)
+            for value, heading in expected_sections
+        )
+
+    async def _evaluate_profile(
+        self,
+        profile: CandidateProfile,
+        criteria: list[Criterion],
+        source_text: str,
+    ) -> EvaluationResult:
+        criteria_text = "\n".join(
+            f"- id={criterion.id}; label={criterion.label}; "
+            f"description={criterion.description}; "
+            f"evidenceHints={', '.join(criterion.evidenceHints) or 'yok'}"
+            for criterion in criteria
+        )
+        user_prompt = (
+            f"CANDIDATE_PROFILE (JSON):\n{profile.model_dump_json()}\n\n"
+            "CRITERIA:\n"
+            + criteria_text
+            + "\n\ncriterionId ve criterionLabel alanlarında yukarıdaki değerleri birebir kullan."
+        )
+        evaluation = await self._llm.structured_chat(
+            CANDIDATE_EVALUATOR_SYSTEM, user_prompt, EvaluationResult
+        )
+        try:
+            return self._normalize_evaluation(evaluation, criteria, profile, source_text)
+        except LLMOutputValidationError:
+            logger.warning("Evaluation kriter kümesi eksik/tekrarlı; tek retry deneniyor")
+            evaluation = await self._llm.structured_chat(
+                CANDIDATE_EVALUATOR_SYSTEM,
+                user_prompt
+                + "\n\nDÜZELTME: Her CRITERIA öğesi için tam bir kez skor üret; "
+                "kriter atlama, ekleme veya tekrar yapma.",
+                EvaluationResult,
+            )
+            return self._normalize_evaluation(evaluation, criteria, profile, source_text)
 
     @staticmethod
     def fit_batch_budget(texts: list[str]) -> tuple[list[str], list[int]]:
@@ -230,7 +321,7 @@ class CVAnalysisService:
                     document_id, profile.candidateName,
                 )
                 profile = profile.model_copy(update={"candidateName": None})
-            profile = self._ground_profile_skills(profile, source_text)
+            profile = self._ground_profile(profile, source_text)
             if profile != item.profile:
                 profiles_by_id[document_id] = item.model_copy(update={"profile": profile})
 
@@ -262,20 +353,29 @@ class CVAnalysisService:
             for item in evaluations_result.candidates
             if item.documentId in expected_ids and id_counts[item.documentId] == 1
         }
+        for document_id, evaluation in list(evaluations_by_id.items()):
+            try:
+                scores = self._normalize_scores(
+                    evaluation.scores,
+                    criteria,
+                    profiles_by_id[document_id].profile,
+                    fitted_texts[document_id],
+                )
+            except LLMOutputValidationError:
+                del evaluations_by_id[document_id]
+            else:
+                evaluations_by_id[document_id] = evaluation.model_copy(
+                    update={"scores": scores}
+                )
         for document_id in sorted(expected_ids - set(evaluations_by_id)):
             logger.warning(
                 "Batch evaluation documentId=%d için eksik/tekrarlı; tekli retry deneniyor",
                 document_id,
             )
-            retry = await self._llm.structured_chat(
-                CANDIDATE_EVALUATOR_SYSTEM,
-                "CANDIDATE_PROFILE (JSON):\n"
-                + profiles_by_id[document_id].profile.model_dump_json()
-                + "\n\nCRITERIA (JSON):\n"
-                + json.dumps(criteria_data, ensure_ascii=False)
-                + "\n\ncriterionId ve criterionLabel alanlarında yukarıdaki "
-                "değerleri birebir kullan.",
-                EvaluationResult,
+            retry = await self._evaluate_profile(
+                profiles_by_id[document_id].profile,
+                criteria,
+                fitted_texts[document_id],
             )
             evaluations_by_id[document_id] = BatchCandidateEvaluation(
                 scores=retry.scores,
@@ -285,16 +385,7 @@ class CVAnalysisService:
         return [
             (
                 profiles_by_id[document_id].profile,
-                evaluations_by_id[document_id].model_copy(
-                    update={
-                        "scores": self._normalize_scores(
-                            evaluations_by_id[document_id].scores,
-                            criteria,
-                            profiles_by_id[document_id].profile,
-                            fitted_texts[document_id],
-                        )
-                    }
-                ),
+                evaluations_by_id[document_id],
             )
             for document_id in range(len(texts))
         ]

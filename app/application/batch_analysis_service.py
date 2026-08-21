@@ -1,4 +1,4 @@
-"""Çoklu CV akışı (docs/CONCURRENCY.md).
+"""Çoklu CV akışı (docs/ARCHITECTURE.md).
 
 İki aşamalı hata politikası:
 1. Validation aşaması all-or-nothing'dir: TÜM dosyalar önce paralel doğrulanır

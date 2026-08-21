@@ -54,7 +54,7 @@ def _container(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _chat_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int, kind: str) -> asyncio.Lock:
-    """chat_id bazlı lock. `kind` ile İKİ AYRI lock ailesi tutulur — bkz. docs/CONCURRENCY.md:
+    """chat_id bazlı lock. `kind` ile İKİ AYRI lock ailesi tutulur — bkz. docs/ARCHITECTURE.md:
 
     - "analysis": aynı sohbetin iki CV analizi çakışmasın.
     - "text": aynı sohbetten hızlıca gelen iki mesajın niyet-sınıflandırma +

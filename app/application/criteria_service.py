@@ -75,12 +75,16 @@ class CriteriaService:
         criteria: list[Criterion] = []
         seen_ids: set[str] = set()
         seen_label_keys: set[frozenset[str]] = set()
-        for criterion in self._grounded_criteria(candidates, free_text):
-            label_key = _criterion_label_key(criterion.label)
-            if criterion.id not in seen_ids and label_key not in seen_label_keys:
-                criteria.append(criterion)
-                seen_ids.add(criterion.id)
-                seen_label_keys.add(label_key)
+
+        def append_unique(candidates_to_add: list[Criterion]) -> None:
+            for criterion in self._grounded_criteria(candidates_to_add, free_text):
+                label_key = _criterion_label_key(criterion.label)
+                if criterion.id not in seen_ids and label_key not in seen_label_keys:
+                    criteria.append(criterion)
+                    seen_ids.add(criterion.id)
+                    seen_label_keys.add(label_key)
+
+        append_unique(candidates)
         uncovered = self._uncovered_criterion_segments(criteria, free_text)
         if not criteria or uncovered:
             retry_sources = sorted(uncovered) if uncovered else [free_text]
@@ -93,13 +97,7 @@ class CriteriaService:
                     "yalnızca kullanıcı metninde geçen ölçütü çıkar.",
                     CriteriaExtractionResult,
                 )
-                retry_criteria = self._grounded_criteria(retry_result.criteria, free_text)
-                for criterion in retry_criteria:
-                    label_key = _criterion_label_key(criterion.label)
-                    if criterion.id not in seen_ids and label_key not in seen_label_keys:
-                        criteria.append(criterion)
-                        seen_ids.add(criterion.id)
-                        seen_label_keys.add(label_key)
+                append_unique(retry_result.criteria)
                 if not self._uncovered_criterion_segments(criteria, free_text):
                     break
         if not criteria:
@@ -112,9 +110,15 @@ class CriteriaService:
     def _uncovered_criterion_segments(
         criteria: list[Criterion], source: str
     ) -> set[str]:
+        normalized_source = source.casefold()
+        separator_pattern = r"[,;/\n]+|\b(?:ve|and)\b"
+        # Tek "A ile B" çoğu zaman tek birleşik kriterdir. "A ile B ile C"
+        # biçiminde ise tekrarlanan bağlaç açık bir liste davranışı gösterir.
+        if len(re.findall(r"\bile\b", normalized_source)) >= 2:
+            separator_pattern += r"|\bile\b"
         segments = [
             segment.strip()
-            for segment in re.split(r"[,;]|\b(?:ve|and)\b", source.casefold())
+            for segment in re.split(separator_pattern, normalized_source)
             if segment.strip()
         ]
         if len(segments) < 2:

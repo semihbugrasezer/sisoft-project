@@ -45,7 +45,7 @@ app/
 │   ├── models.py           Pydantic şemaları (LLM çıktıları buraya zorlanır)
 │   ├── errors.py           AppError hiyerarşisi (PDFValidationError, LLMOutputValidationError, ...)
 │   ├── ports.py            LLMPort arayüzü (infrastructure bunu uygular)
-│   ├── grounding.py        Aday adı, beceri ve skor kanıtı için kaynak-doğrulama
+│   ├── grounding.py        Kaynak-doğrulama için ortak metin eşleştirme kuralları
 │   └── scoring.py          Ortalama hesaplama, top-3 sıralama — LLM'e bağımlı değil
 │
 ├── application/            Use-case servisleri, domain + infrastructure'ı birleştirir
@@ -152,8 +152,7 @@ dosyaları paralel doğrular (`asyncio.gather`; ilk hatada kesmez — hepsi
 biter, sonra tamamı reddedilir) ve LLM extraction/
 evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
 çalıştırır. Yalnız eksik/tekrarlı evaluation belgeleri tekli şemayla tamamlanır
-— bkz. [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Nominal batch başına iki LLM
-çağrısı".
+ve eksik/tekrarlı kriter kümesi bir kez düzeltilir.
 
 ## LLM Backend'leri
 
@@ -178,25 +177,50 @@ nedeni ikisinin de aynı protokolü paylaşmasıdır; ayrı `LMStudioClient` ve
 Uzak bir uç yapılandırılırsa CV içeriği o sunucuya gönderilir — bkz.
 [SECURITY.md](../SECURITY.md).
 
-## Eşzamanlılık
+## Eşzamanlılık Modeli
 
-Dört ayrı katman (Telegram update kabulü, sohbet başına kilit, bloklayan PDF
-işi, LLM istek limiti) ayrı bir dokümanda ayrıntılı anlatılıyor:
-**[CONCURRENCY.md](./CONCURRENCY.md)**.
+| Katman | Mekanizma | Garanti |
+|---|---|---|
+| Telegram update kabulü | `concurrent_updates(8)` | Bir LLM isteği beklerken diğer update'ler işlenir |
+| Sohbet sırası | `chat_id` bazlı ayrı `text` ve `analysis` kilitleri | Aynı tür işlemler sıralı; batch sürerken sohbet açık |
+| PyMuPDF / SQLite | `asyncio.to_thread` | Senkron I/O event loop'u bloklamaz |
+| Batch PDF doğrulama | `asyncio.gather` | En fazla 5 belge paralel doğrulanır |
+| LLM istekleri | `Semaphore(LLM_MAX_CONCURRENCY)` | Tek model sunucusu sınırsız istekle boğulmaz |
 
-Özet:
+`/criteria`, PDF caption kriteri, sohbet ve `/reset` aynı `text` kilidini
+kullanır; eski bir LLM çağrısı reset sonrasında veriyi geri yazamaz. CV analizi
+ayrı `analysis` kilidindedir. `/analyze`, SQLite kuyruğunu atomik sahiplenir;
+eşzamanlı ikinci analiz aynı dosyaları alamaz ve analiz sırasında yeni yüklenen
+dosyalar sonraki batch'te kalır.
 
-- `Application.concurrent_updates(8)` — birden fazla sohbet eşzamanlı işlenir.
-- `chat_id` bazlı `asyncio.Lock` — aynı sohbette sıralı, farklı sohbetlerde paralel.
-- `asyncio.to_thread` — bloklayan PyMuPDF/sqlite3 çağrıları event loop dışında.
-- `asyncio.Semaphore(LLM_MAX_CONCURRENCY)` — tek model sunucusuna giden istek limiti.
+Batch'te tüm PDF'ler önce paralel ve all-or-nothing doğrulanır. LLM aşaması
+nominal olarak iki toplu çağrıdır: extraction ve evaluation. Model bir belgeyi
+veya kriteri atlar/tekrarlarsa yalnız sorunlu profil tekli şemayla bir kez
+tamamlanır; yine eksikse kısmi Top-3 döndürülmez.
+
+## Temel Tasarım Kararları
+
+| Karar | Gerekçe |
+|---|---|
+| Ayrı intent, criteria extraction, CV extraction ve evaluation prompt'ları | Hata kaynağı görünür ve her sorumluluk ayrı test edilebilir |
+| Ortalama ve Top-3 backend'de | Aritmetik ve sıralama deterministiktir |
+| Ham PDF yerine önce `CandidateProfile` | PDF'nin ortak JSON şartı ve prompt-injection sınırı korunur |
+| CV başına istek yerine nominal iki batch çağrısı | Tek yerel modelde token tekrarı ve timeout riski azalır |
+| Yalnız LLM için port | İki gerçek LLM implementasyonu vardır; tek SQLite/PDF implementasyonu için ek arayüz YAGNI'dir |
+| SQLite + rolling summary | Demo kurulumu basit kalır, prompt penceresi sınırlıyken uzun bağlam korunur |
+| Vector DB yok | Retrieval yapılacak kalıcı CV koleksiyonu bulunmaz |
+
+Anahtar-kelimeyle kriter intent'ini atlama yaklaşımı testte reddedildi: “React
+tecrübesi benim için önemli” geçerli bir serbest-metin kriteridir. Bu yüzden
+niyet structured output ile belirlenir; gecikme gerektiğinde isteğe bağlı
+`LLM_INTENT_MODEL` ile azaltılır.
 
 ## Bilinen Mimari Kısıtlar
 
 - **Tek instance varsayımı** — SQLite ve bellek içi kilitler/albüm tamponu tek
   process varsayar; yatay ölçekleme için paylaşılan bir state store gerekir.
-- **Batch LLM aşaması CV başına paralel değil** — bilinçli tercih, gerekçesi
-  [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
+- **Batch LLM aşaması CV başına paralel değil** — tek yerel model için nominal
+  iki toplu çağrı kullanılır; yalnız eksik belge/kriterler dar kapsamlı retry alır.
 - **20.000 karakter extraction sınırı** — çok uzun CV'ler kırpılır; kullanıcı
   uyarılır.
 - **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md). Sohbet geçmişi

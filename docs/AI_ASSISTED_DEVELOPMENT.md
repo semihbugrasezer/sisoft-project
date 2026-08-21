@@ -42,7 +42,7 @@ anlatır.
 Adım 1'in amacı özellikle önemliydi: kapsam önceden sabitlenmezse AI araçları
 istenmeyen özellikler (vector DB, ayrı frontend, mikroservis) önerme
 eğilimindedir. Kapsam dışı bırakma kararları
-[DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve
+[ARCHITECTURE.md](./ARCHITECTURE.md) ve
 [REQUIREMENTS_TRACEABILITY.md](./REQUIREMENTS_TRACEABILITY.md)'de kayıtlıdır.
 
 ## İnsan Denetim Noktaları

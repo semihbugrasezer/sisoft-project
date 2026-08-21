@@ -98,15 +98,20 @@ Bu güvenli düşürme özellikle batch modelinin bir adayın kanıtını başka
 taşıdığı durumda tüm 5-CV sonucunu kaybetmeden sızıntıyı Top-3 hesabından çıkarır.
 Türkçe aksan farkı ve tek karakterlik kopya sapması tolere edilir; yeni terim ve
 sayılar yine reddedilir. Ham metin evaluator prompt'una verilmez, yalnız dönen
-kanıtı deterministik doğrulamak için servis içinde kullanılır. Extraction
-aşamasında kaynakta bulunmayan beceri değerleri de normalize profilden çıkarılır.
+kanıtı deterministik doğrulamak için servis içinde kullanılır. Bu kontrol skora
+yeni bilgi eklemez; evaluator'ın yalnız ortak JSON üzerinden çalışma sözleşmesini
+koruyan bir trust-boundary filtresidir.
 
-Aynı mantık `candidateName` için de uygulanır: Pydantic alanın *string* olduğunu
-doğrular ama *doğru* olduğunu doğrulayamaz. `is_grounded_in_source`
-(`app/domain/grounding.py`) adın kaynak metinde gerçekten geçtiğini kelime bazlı
-kontrol eder; geçmiyorsa bir düzeltme turu denenir, yine tutmazsa alan `None`'a
-çekilir (çağıran dosya adına düşer). Bu, canlı koşuda gözlenen aksanlı-isim
-bozulmasını yakalar (bkz. [VALIDATION.md](./VALIDATION.md) koşu #6).
+Extraction sonrasında `candidateName`, `contact`, `summary`, `skills`,
+`workExperiences`, `education` ve `languages` alanlarının tamamı kaynak metne
+karşı doğrulanır. Kaynakta bulunmayan opsiyonel değerler `None` yapılır; beceri,
+dil veya bütünüyle dayanaksız kayıtlar listeden çıkarılır. Tekli akışta herhangi
+bir alan filtreye takılırsa extractor bir kez dar kapsamlı düzeltme turu alır;
+aynı tur kaynakta başlığı bulunan ama boş bırakılan profil bölümlerini de
+tamamlamayı dener. Yine dayanaksız kalan değer silinir. `candidateName`
+kaynakta yoksa tekli akış bir düzeltme turu dener, yine tutmazsa `None`'a çeker
+(çağıran dosya adına düşer). Bu, canlı koşuda gözlenen aksanlı-isim bozulmasını
+yakalar (bkz. [VALIDATION.md](./VALIDATION.md) koşu #6).
 
 Benzer şekilde `_normalize_scores`, modelin kriter kimliklerini uydurmadığını
 veya atlamadığını doğrular: dönen `criterionId` kümesi tanımlı kriterlerle
@@ -175,7 +180,7 @@ açık hata.
 Anahtar kelime tabanlı bir kısayol (örn. "kriter/skorla" kelimeleri yoksa
 LLM'e hiç gitme) denenip **reddedildi**: "React tecrübesi benim için önemli"
 cümlesinde tetikleyici kelime yoktur ama geçerli bir kriter tanımıdır. Bkz.
-[DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md).
+[ARCHITECTURE.md](./ARCHITECTURE.md#temel-tasarım-kararları).
 
 ## Sorumluluk Ayrımı
 
@@ -196,7 +201,8 @@ görünür olur ve her aşama ayrı ayrı test edilebilir.
 5 CV için CV başına 2 çağrı (toplam 10 istek) yerine normal akışta **iki toplu istek**
 kullanılır: tüm belgeler tek extraction çağrısında profillere, tüm profiller
 tek evaluation çağrısında değerlendirmelere çevrilir. Gerekçe ve ölçümler
-[DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
+[ARCHITECTURE.md](./ARCHITECTURE.md#eşzamanlılık-modeli) ve
+[VALIDATION.md](./VALIDATION.md)'dedir.
 
 Model batch evaluation'da bir `documentId`yi atlar veya tekrarlarsa geçerli
 sonuçlar korunur, yalnız sorunlu profiller tekli `EvaluationResult` şemasıyla

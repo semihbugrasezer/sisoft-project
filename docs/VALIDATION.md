@@ -3,9 +3,24 @@
 Doğruluk iddiaları mock veriyle sınırlı kalmasın diye gerçek yerel
 `qwen2.5:7b` (Ollama) ve `google/gemma-4-e4b` (LM Studio) sunucularına karşı
 canlı çalıştırmalarla test edildi — taklit LLM
-istemcileriyle yürütülen otomatik test paketine ek olarak (kapsam ve sayı için
-tek kaynak: [TESTING.md](./TESTING.md)). Ana proje tanımı için
+istemcileriyle yürütülen otomatik test paketine ek olarak. Ana proje tanımı için
 [README.md](../README.md)'ye bakın.
+
+## Otomatik Doğrulama
+
+```bash
+python -m pytest -q
+ruff check app main.py tests scripts
+mypy app main.py
+python -m compileall -q app main.py scripts
+pip check
+```
+
+Toplam 168 test; PDF doğrulama, beş farklı CV yerleşimi, Pydantic sözleşmeleri,
+dinamik kriter tamlığı, profil/kanıt grounding, tekli ve batch analiz, Top-3
+skorlama, SQLite kalıcılığı, Telegram yarışları ve iki LLM adaptörünü kapsar.
+CI aynı kapıları Python 3.13 ve 3.14 matrisinde çalıştırır. Gerçek model koşuları
+deterministik ve hızlı olmadığı için CI'dan ayrı tutulur.
 
 ## Genel Doğrulanan Davranış
 
@@ -49,7 +64,7 @@ saydığı için "React ve uydurma Kubernetes" gibi karma bir iddia geçebiliyor
 Güncel kural, yüksek skor kanıtındaki tüm somut terimleri hem normalize profile
 hem ham PDF kaynak metnine karşı doğrular. Aksan ve tek karakterlik kopya
 sapması kabul edilirken yeni terim ve sayılar reddedilir. Kaynakta bulunmayan
-extraction becerileri profile alınmaz; iki kaynağa dayanmayan skor tüm batch'i
+extraction alanları ortak profile alınmaz; iki kaynağa dayanmayan skor tüm batch'i
 iptal etmek yerine `0 / Kanıt yok` değerine indirilir. Son `--full` koşusu,
 batch modelinin üç kaynak-dışı kanıtını güvenli düşürüp kalan sonuçla geçerli
 top-3 JSON ürettiğini doğruladı.
@@ -83,8 +98,9 @@ nesnesinin kısıtlı JSON şemasıdır:
 - Kriter çıkarımı: ~70 saniye.
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
 - 5 CV batch (Ollama nominal extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
-  580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Yani **~8-17
-  dakika** aralığı; en güncel `--full` koşusu 991.3s = 16.5 dakikadır.
+  580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Ollama aralığı
+  **~8-17 dakika**dır; LM Studio'nun 1086.6s ölçümü dahil toplam gözlenen aralık
+  **~8-19 dakika**dır.
 
 ## OpenAI-Uyumlu Backend (LM Studio) — Uçtan Uca Doğrulama
 
@@ -157,7 +173,7 @@ kapsam dışı bırakıldı.
    gerçekten paralel işleyebiliyorsa (`OLLAMA_NUM_PARALLEL`) hızlanır; tek
    GPU'da seri işliyorsa fark etmez. Mevcut iki-çağrılı tasarım bilinçli
    tercih edildi çünkü önceki on-çağrılı akış timeout riski taşıyordu (bkz.
-   [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md)). Bu geri adım riskli bulundu.
+   [ARCHITECTURE.md](./ARCHITECTURE.md#temel-tasarım-kararları)). Bu geri adım riskli bulundu.
 
 ## Dördüncü Koşu — Rolling Summary
 
@@ -186,7 +202,7 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 
 ## Bilinen Sınırlamalar
 
-- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–17
+- **Yerel model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–19
   dakika sürer (yukarıdaki ölçümler). Darboğaz
   model/donanımdır, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler `validate_and_extract_text`
@@ -197,7 +213,7 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
   kırpılır (context/timeout koruması). Kullanıcı artık Telegram'da bir uyarı
   mesajıyla bilgilendiriliyor (`TRUNCATED_WARNING`, `handlers.py`).
 - **Batch'te varsayılan olarak CV başına paralel LLM isteği yok** — bkz.
-  [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) "Nominal batch başına iki LLM çağrısı"
+  [ARCHITECTURE.md](./ARCHITECTURE.md#temel-tasarım-kararları)
   kararı. PDF validation/extraction paraleldir; LLM extraction/evaluation
   tüm belgeler için tek bir toplu istektir (tek yerel model sunucusunu N ayrı
   istekle boğmamak için bilinçli tercih). Yalnız eksik/tekrarlı evaluation

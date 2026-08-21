@@ -1,7 +1,7 @@
 """Telegram albüm (media_group_id) dosyalarını toplar. Aynı gruptaki dosyalar ayrı
 update olarak gelir ve grubun büyüklüğü önceden bilinmez — bu yüzden son dosyadan
 sonra kısa bir debounce süresi beklenir; süre dolduğunda veya limit dolduğunda
-otomatik tetiklenir (docs/CONCURRENCY.md)."""
+otomatik tetiklenir (docs/ARCHITECTURE.md)."""
 from __future__ import annotations
 
 import asyncio

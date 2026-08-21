@@ -163,6 +163,21 @@ async def run(full: bool) -> int:
             "Ortak JSON şemasına çıkarım (candidateName)",
             f"{profile.candidateName!r}, {len(profile.skills)} yetenek",
         )
+        extracted_sections = {
+            "contact": any(profile.contact.model_dump().values()),
+            "summary": bool(profile.summary),
+            "skills": bool(profile.skills),
+            "workExperiences": bool(profile.workExperiences),
+            "education": bool(profile.education),
+            "languages": bool(profile.languages),
+        }
+        missing_sections = [name for name, present in extracted_sections.items() if not present]
+        report.check(
+            not missing_sections,
+            "Ortak JSON alanları eksiksiz çıkarıldı",
+            "eksik: " + ", ".join(missing_sections) if missing_sections else
+            ", ".join(extracted_sections),
+        )
         scored = [s.criterionLabel for s in evaluation.scores]
         report.check(
             len(evaluation.scores) == len(criteria),

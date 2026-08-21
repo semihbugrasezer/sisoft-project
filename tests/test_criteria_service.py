@@ -261,6 +261,39 @@ async def test_partial_extraction_retries_and_combines_grounded_criteria():
     assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
 
 
+@pytest.mark.parametrize(
+    "separator",
+    [" / ", "\n", " ile "],
+    ids=["slash", "newline", "repeated-ile"],
+)
+@pytest.mark.asyncio
+async def test_free_text_list_separators_do_not_allow_partial_criteria(separator):
+    class PartialThenFocusedLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if "temiz kod" in user and "React" not in user:
+                criteria = [
+                    Criterion(id="clean_code", label="temiz kod yazımı", description="x")
+                ]
+            elif "uzaktan" in user and "React" not in user:
+                criteria = [
+                    Criterion(id="remote", label="uzaktan çalışma uyumu", description="x")
+                ]
+            else:
+                criteria = [
+                    Criterion(id="react", label="React tecrübesi", description="x")
+                ]
+            return CriteriaExtractionResult(criteria=criteria)
+
+    criteria = await CriteriaService(PartialThenFocusedLLM(), FakeRepo()).define_criteria(
+        1,
+        separator.join(
+            ["React tecrübesi", "temiz kod yazımı", "uzaktan çalışma uyumu"]
+        ),
+    )
+
+    assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+
+
 @pytest.mark.asyncio
 async def test_intent_and_extractor_partial_results_are_combined_before_missing_retry():
     class LiveGemmaPatternLLM:
