@@ -185,12 +185,15 @@ async def criteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    try:
-        criteria = await _container(context).criteria_service.define_criteria(chat_id, free_text)
-    except AppError as exc:
-        await update.message.reply_text(exc.user_message)
-        return
-    await _reply_criteria_saved(update, criteria)
+    async with _chat_lock(context, chat_id, "text"):
+        try:
+            criteria = await _container(context).criteria_service.define_criteria(
+                chat_id, free_text
+            )
+        except AppError as exc:
+            await update.message.reply_text(exc.user_message)
+            return
+        await _reply_criteria_saved(update, criteria)
 
 
 async def criteria_show_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -281,11 +284,12 @@ async def document_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # PDF caption'ında kriter cümlesi varsa önce onu kaydet (docs/LLM_PIPELINE.md).
     caption = update.message.caption
     if caption:
-        try:
-            await container.criteria_service.define_if_requested(chat_id, caption)
-        except AppError as exc:
-            await update.message.reply_text(exc.user_message)
-            return
+        async with _chat_lock(context, chat_id, "text"):
+            try:
+                await container.criteria_service.define_if_requested(chat_id, caption)
+            except AppError as exc:
+                await update.message.reply_text(exc.user_message)
+                return
 
     try:
         criteria = await container.criteria_service.get_active_criteria(chat_id)

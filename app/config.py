@@ -18,6 +18,7 @@ class Config:
     llm_api_key: str | None
     db_path: str
     llm_timeout: float
+    chat_retention_hours: float
     cv_retention_hours: float
 
 
@@ -57,6 +58,9 @@ def load_config() -> Config:
         llm_api_key=os.getenv("LLM_API_KEY") or None,
         db_path=os.getenv("DB_PATH", "sisoft.db"),
         llm_timeout=float(os.getenv("LLM_TIMEOUT", "1200")),
+        # Sohbet mesajları ve bunları içerebilecek rolling summary açılışta bu
+        # yaştan sonra silinir. 0 veya negatif değer temizliği devre dışı bırakır.
+        chat_retention_hours=float(os.getenv("CHAT_RETENTION_HOURS", "168")),
         # Bekleyen (henüz /analyze edilmemiş) CV'ler için AÇILIŞ temizliği yaş
         # eşiği. Temizlik yalnız post_init'te çalışır; kesintisiz çalışan bir botta
         # gerçek üst sınır değildir (bilinçli tercih — periyodik bir scheduler bu

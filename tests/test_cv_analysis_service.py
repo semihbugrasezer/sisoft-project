@@ -49,7 +49,14 @@ class FakeLLM:
         )
 
 
-CRITERIA = [Criterion(id="react", label="React tecrübesi", description="React deneyimi")]
+CRITERIA = [
+    Criterion(
+        id="react",
+        label="React tecrübesi",
+        description="React deneyimi",
+        evidenceHints=["React.js üretim projesi"],
+    )
+]
 
 
 def _profile(name="Ada"):
@@ -113,9 +120,12 @@ class FakeBatchLLM:
 @pytest.mark.asyncio
 async def test_evaluation_uses_and_enforces_criterion_identity():
     llm = FakeLLM("react")
-    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada Lovelace — CV metni", CRITERIA)
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text(
+        "Ada Lovelace — React CV metni", CRITERIA
+    )
 
     assert "id=react" in llm.prompts[1]
+    assert "React.js üretim projesi" in llm.prompts[1]
     assert evaluation.scores[0].criterionLabel == "React tecrübesi"
 
 
@@ -149,11 +159,13 @@ async def test_high_score_evidence_must_exist_in_normalized_profile():
                 hrEvaluation="x",
             )
 
-    with pytest.raises(LLMOutputValidationError):
-        await CVAnalysisService(UngroundedEvidenceLLM()).analyze_from_text(
-            "Ada\nReact",
-            CRITERIA,
-        )
+    _, evaluation = await CVAnalysisService(UngroundedEvidenceLLM()).analyze_from_text(
+        "Ada\nReact",
+        CRITERIA,
+    )
+
+    assert evaluation.scores[0].score == 0
+    assert evaluation.scores[0].evidence == ["Kanıt yok"]
 
 
 @pytest.mark.asyncio
@@ -186,12 +198,128 @@ async def test_high_score_evidence_may_explain_a_fact_that_exists_in_profile():
     assert evaluation.scores[0].score == 80
 
 
+class EvidenceLLM:
+    def __init__(self, profile: CandidateProfile, evaluation: EvaluationResult):
+        self.profile = profile
+        self.evaluation = evaluation
+
+    async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+        return self.profile if response_model is CandidateProfile else self.evaluation
+
+
+def _scored_evaluation(
+    criterion: Criterion, evidence: str, score: int = 95
+) -> EvaluationResult:
+    return EvaluationResult(
+        scores=[
+            CriterionScore(
+                criterionId=criterion.id,
+                criterionLabel=criterion.label,
+                score=score,
+                evidence=[evidence],
+                reason="x",
+            )
+        ],
+        strengths=["x"],
+        weaknesses=["x"],
+        recommendations=["x"],
+        hrEvaluation="x",
+    )
+
+
+@pytest.mark.asyncio
+async def test_high_score_rejects_evidence_with_one_real_and_one_invented_claim():
+    llm = EvidenceLLM(_profile(), _scored_evaluation(CRITERIA[0], "React ve Kubernetes"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", CRITERIA)
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_high_score_rejects_invented_numeric_claim():
+    llm = EvidenceLLM(_profile(), _scored_evaluation(CRITERIA[0], "React ile 10 yıl"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", CRITERIA)
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_cross_language_criterion_accepts_fully_source_grounded_evidence():
+    criterion = Criterion(id="clean_code", label="Temiz kod yazımı", description="temiz kod")
+    profile = _profile().model_copy(update={"skills": ["Clean Code"]})
+    llm = EvidenceLLM(profile, _scored_evaluation(criterion, "Clean Code"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nClean Code", [criterion]
+    )
+
+    assert evaluation.scores[0].score == 95
+
+
+@pytest.mark.asyncio
+async def test_high_score_evidence_must_exist_in_raw_source_not_only_profile():
+    criterion = Criterion(id="k8s", label="Kubernetes", description="Kubernetes")
+    profile = _profile().model_copy(update={"skills": ["Kubernetes"]})
+    llm = EvidenceLLM(profile, _scored_evaluation(criterion, "Kubernetes"))
+
+    _, evaluation = await CVAnalysisService(llm).analyze_from_text("Ada\nReact", [criterion])
+
+    assert evaluation.scores[0].score == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_downgrades_cross_candidate_evidence_instead_of_aborting():
+    class LeakyBatchLLM(FakeBatchLLM):
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            if response_model is BatchProfileResult:
+                return await super().structured_chat(
+                    system, user, response_model, temperature, model
+                )
+            leaked = _scored_evaluation(CRITERIA[0], "React ve Kubernetes").scores
+            return BatchEvaluationResult(
+                candidates=[
+                    BatchEvaluationItem(
+                        documentId=index,
+                        evaluation=BatchCandidateEvaluation(
+                            scores=leaked,
+                            hrEvaluation="uygun",
+                        ),
+                    )
+                    for index in range(2)
+                ]
+            )
+
+    analyses = await CVAnalysisService(LeakyBatchLLM()).analyze_batch_from_texts(
+        ["Ada React", "Can React"], CRITERIA
+    )
+
+    assert [item[1].scores[0].score for item in analyses] == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_ungrounded_extracted_skill_is_removed_from_normalized_profile():
+    criterion = Criterion(id="k8s", label="Kubernetes", description="Kubernetes")
+    profile = _profile().model_copy(update={"skills": ["Kubernetes"]})
+    llm = EvidenceLLM(
+        profile,
+        _scored_evaluation(criterion, "Kanıt yok", score=0),
+    )
+
+    normalized, _ = await CVAnalysisService(llm).analyze_from_text(
+        "Ada\nReact", [criterion]
+    )
+
+    assert normalized.skills == []
+
+
 @pytest.mark.asyncio
 async def test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles():
     llm = FakeBatchLLM()
 
     analyses = await CVAnalysisService(llm).analyze_batch_from_texts(
-        ["RAW_SECRET_ONE", "RAW_SECRET_TWO"], CRITERIA
+        ["Ada React RAW_SECRET_ONE", "Can React RAW_SECRET_TWO"], CRITERIA
     )
 
     assert len(analyses) == 2

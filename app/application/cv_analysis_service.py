@@ -13,7 +13,10 @@ import logging
 import time
 
 from app.domain.errors import LLMOutputValidationError
-from app.domain.grounding import has_grounded_term_in_source, is_grounded_in_source
+from app.domain.grounding import (
+    is_grounded_claim_in_source,
+    is_grounded_in_source,
+)
 from app.domain.models import (
     BatchCandidateEvaluation,
     BatchEvaluationResult,
@@ -81,9 +84,12 @@ class CVAnalysisService:
             CV_EXTRACTOR_SYSTEM, f"SOURCE_TEXT:\n{text}", CandidateProfile
         )
         profile = await self._ground_candidate_name(profile, text)
+        profile = self._ground_profile_skills(profile, text)
 
         criteria_json = "\n".join(
-            f"- id={c.id}; label={c.label}; description={c.description}" for c in criteria
+            f"- id={c.id}; label={c.label}; description={c.description}; "
+            f"evidenceHints={', '.join(c.evidenceHints) or 'yok'}"
+            for c in criteria
         )
         user_prompt = (
             f"CANDIDATE_PROFILE (JSON):\n{profile.model_dump_json()}\n\n"
@@ -94,7 +100,7 @@ class CVAnalysisService:
             CANDIDATE_EVALUATOR_SYSTEM, user_prompt, EvaluationResult
         )
 
-        return profile, self._normalize_evaluation(evaluation, criteria, profile)
+        return profile, self._normalize_evaluation(evaluation, criteria, profile, text)
 
     async def _ground_candidate_name(
         self, profile: CandidateProfile, source_text: str
@@ -130,6 +136,22 @@ class CVAnalysisService:
             retried.candidateName,
         )
         return retried.model_copy(update={"candidateName": None})
+
+    @staticmethod
+    def _ground_profile_skills(
+        profile: CandidateProfile, source_text: str
+    ) -> CandidateProfile:
+        grounded = [
+            skill for skill in profile.skills
+            if is_grounded_in_source(skill, source_text)
+        ]
+        if len(grounded) == len(profile.skills):
+            return profile
+        logger.warning(
+            "Kaynakta bulunmayan %d skill normalize profilden çıkarıldı",
+            len(profile.skills) - len(grounded),
+        )
+        return profile.model_copy(update={"skills": grounded})
 
     @staticmethod
     def fit_batch_budget(texts: list[str]) -> tuple[list[str], list[int]]:
@@ -195,16 +217,19 @@ class CVAnalysisService:
         # extraction'ı (dakikalar) tekrarlamak orantısız olurdu. Doğrulanamayan ad
         # None'a çekilir; BatchAnalysisService zaten dosya adına düşer.
         for document_id, item in profiles_by_id.items():
-            if item.profile.candidateName is not None and not is_grounded_in_source(
-                item.profile.candidateName, fitted_texts[document_id]
+            profile = item.profile
+            source_text = fitted_texts[document_id]
+            if profile.candidateName is not None and not is_grounded_in_source(
+                profile.candidateName, source_text
             ):
                 logger.warning(
                     "documentId=%d: candidateName kaynak metinde yok (%r) — None'a çekiliyor",
-                    document_id, item.profile.candidateName,
+                    document_id, profile.candidateName,
                 )
-                profiles_by_id[document_id] = item.model_copy(
-                    update={"profile": item.profile.model_copy(update={"candidateName": None})}
-                )
+                profile = profile.model_copy(update={"candidateName": None})
+            profile = self._ground_profile_skills(profile, source_text)
+            if profile != item.profile:
+                profiles_by_id[document_id] = item.model_copy(update={"profile": profile})
 
         normalized_profiles = [
             {
@@ -240,6 +265,7 @@ class CVAnalysisService:
                             evaluations_by_id[document_id].evaluation.scores,
                             criteria,
                             profiles_by_id[document_id].profile,
+                            fitted_texts[document_id],
                         )
                     }
                 ),
@@ -260,11 +286,12 @@ class CVAnalysisService:
         evaluation: EvaluationResult,
         criteria: list[Criterion],
         profile: CandidateProfile,
+        source_text: str,
     ) -> EvaluationResult:
         return evaluation.model_copy(
             update={
                 "scores": CVAnalysisService._normalize_scores(
-                    evaluation.scores, criteria, profile
+                    evaluation.scores, criteria, profile, source_text
                 )
             }
         )
@@ -274,6 +301,7 @@ class CVAnalysisService:
         scores,
         criteria: list[Criterion],
         profile: CandidateProfile,
+        source_text: str,
     ):
         scores_by_id = {score.criterionId: score for score in scores}
         expected_ids = {criterion.id for criterion in criteria}
@@ -281,19 +309,34 @@ class CVAnalysisService:
             raise LLMOutputValidationError("Model kriterlerin her biri için tek bir skor üretmedi.")
 
         profile_content = CVAnalysisService._profile_content(profile)
-        for score in scores:
+        invalid_ids = {
+            score.criterionId
+            for score in scores
             if score.score >= 20 and not any(
-                has_grounded_term_in_source(evidence, profile_content)
+                is_grounded_claim_in_source(evidence, profile_content)
+                and is_grounded_claim_in_source(evidence, source_text)
                 for evidence in score.evidence
-            ):
-                raise LLMOutputValidationError(
-                    f"{score.criterionId} kriterinin yüksek skoru profile dayanmıyor."
-                )
+            )
+        }
+        for criterion_id in invalid_ids:
+            logger.warning(
+                "%s kriterinin kanıtı profile/kaynağa dayanmadı; skor 0'a indirildi",
+                criterion_id,
+            )
 
         return [
-            scores_by_id[criterion.id].model_copy(
-                update={"criterionLabel": criterion.label}
-            )
+            scores_by_id[criterion.id].model_copy(update={
+                "criterionLabel": criterion.label,
+                **(
+                    {
+                        "score": 0,
+                        "evidence": ["Kanıt yok"],
+                        "reason": "Kanıt normalize profil ve kaynak belgede doğrulanamadı.",
+                    }
+                    if criterion.id in invalid_ids
+                    else {}
+                ),
+            })
             for criterion in criteria
         ]
 

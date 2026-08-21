@@ -16,14 +16,27 @@ from app.infrastructure.persistence.sqlite_repo import SQLiteRepo
 
 logger = logging.getLogger(__name__)
 
-_CRITERIA_REQUEST_WORDS = {
-    "aday", "adaylar", "bana", "beceri", "becerisi", "benim", "bilgi",
-    "bilgisi", "bu", "cv", "değerlendir", "değerlendirme", "göre", "için",
-    "istiyorum", "kriter", "önemli", "skorla", "tecrübe", "tecrübesi",
-    "uyum", "uyumu", "uyumuna", "ve", "yazım", "yazımı", "yetenek",
-    "yetkinlik", "yetkinliği",
+_GENERIC_CRITERION_WORDS = {
+    "beceri", "becerisi", "bilgi", "bilgisi", "deneyim", "deneyimi",
+    "kriter", "tecrübe", "tecrübesi", "uyum", "uyumu", "uyumlu", "yetenek",
 }
-_CRITERIA_REQUEST_PREFIXES = ("değerlendir", "deneyim", "skorla", "tecrübe", "uyum")
+
+
+def _appears_in_words(word: str, words: set[str]) -> bool:
+    return any(
+        word == candidate
+        or (len(word) >= 4 and candidate.startswith(word))
+        or (len(candidate) >= 4 and word.startswith(candidate))
+        for candidate in words
+    )
+
+
+def _criterion_label_key(label: str) -> frozenset[str]:
+    meaningful = {
+        word for word in re.findall(r"\w+", label.casefold())
+        if len(word) >= 3 and word not in _GENERIC_CRITERION_WORDS
+    }
+    return frozenset(meaningful or {label.casefold().strip()})
 
 # NOT: Burada bir anahtar-kelime heuristic'i ile intent-classifier LLM çağrısını
 # atlamayı denedik (düz sohbet mesajlarını hızlandırmak için) — ama
@@ -61,21 +74,21 @@ class CriteriaService:
         candidates = [*(seed_criteria or []), *result.criteria]
         criteria: list[Criterion] = []
         seen_ids: set[str] = set()
-        seen_labels: set[str] = set()
+        seen_label_keys: set[frozenset[str]] = set()
         for criterion in self._grounded_criteria(candidates, free_text):
-            label = criterion.label.casefold()
-            if criterion.id not in seen_ids and label not in seen_labels:
+            label_key = _criterion_label_key(criterion.label)
+            if criterion.id not in seen_ids and label_key not in seen_label_keys:
                 criteria.append(criterion)
                 seen_ids.add(criterion.id)
-                seen_labels.add(label)
-        uncovered = self._uncovered_source_words(criteria, free_text)
+                seen_label_keys.add(label_key)
+        uncovered = self._uncovered_criterion_segments(criteria, free_text)
         if not criteria or uncovered:
             missing = ", ".join(sorted(uncovered)) or "tüm kullanıcı kriterleri"
             existing = ", ".join(criterion.label for criterion in criteria) or "yok"
             retry_result = await self._llm.structured_chat(
                 CRITERIA_EXTRACTOR_SYSTEM,
                 free_text
-                + "\n\nDÜZELTME: Önceki çıktı şu kaynak terimlerini kapsamadı: "
+                + "\n\nDÜZELTME: Önceki çıktı şu kriter parçalarını kapsamadı: "
                 + missing
                 + ". Mevcut doğru etiketleri tekrar etme: "
                 + existing
@@ -85,37 +98,40 @@ class CriteriaService:
             )
             retry_criteria = self._grounded_criteria(retry_result.criteria, free_text)
             for criterion in retry_criteria:
-                if criterion.id not in seen_ids and criterion.label.casefold() not in seen_labels:
+                label_key = _criterion_label_key(criterion.label)
+                if criterion.id not in seen_ids and label_key not in seen_label_keys:
                     criteria.append(criterion)
                     seen_ids.add(criterion.id)
-                    seen_labels.add(criterion.label.casefold())
+                    seen_label_keys.add(label_key)
         if not criteria:
             raise LLMOutputValidationError("Model kullanıcı metninde olmayan kriter üretti.")
-        if self._uncovered_source_words(criteria, free_text):
+        if self._uncovered_criterion_segments(criteria, free_text):
             raise LLMOutputValidationError("Model kullanıcı metnindeki tüm kriterleri çıkaramadı.")
         return await self._save(chat_id, criteria)
 
     @staticmethod
-    def _uncovered_source_words(criteria: list[Criterion], source: str) -> set[str]:
-        source_words = {
-            word for word in re.findall(r"\w+", source.casefold())
-            if len(word) >= 3
-            and not word.isdigit()
-            and word not in _CRITERIA_REQUEST_WORDS
-            and not word.startswith(_CRITERIA_REQUEST_PREFIXES)
-        }
+    def _uncovered_criterion_segments(
+        criteria: list[Criterion], source: str
+    ) -> set[str]:
+        segments = [
+            segment.strip()
+            for segment in re.split(r"[,;]|\b(?:ve|and)\b", source.casefold())
+            if segment.strip()
+        ]
+        if len(segments) < 2:
+            return set()
+
         label_words = {
             word
             for criterion in criteria
             for word in re.findall(r"\w+", criterion.label.casefold())
+            if len(word) >= 3 and word not in _GENERIC_CRITERION_WORDS
         }
         return {
-            source_word
-            for source_word in source_words
+            segment
+            for segment in segments
             if not any(
-                source_word == label_word
-                or (len(source_word) >= 4 and label_word.startswith(source_word))
-                or (len(label_word) >= 4 and source_word.startswith(label_word))
+                _appears_in_words(label_word, set(re.findall(r"\w+", segment)))
                 for label_word in label_words
             )
         }
@@ -177,20 +193,8 @@ class CriteriaService:
 
     @staticmethod
     def _grounded_criteria(criteria: list[Criterion], source: str) -> list[Criterion]:
-        generic_words = {
-            "beceri", "becerisi", "bilgi", "bilgisi", "deneyim", "deneyimi",
-            "kriter", "tecrübe", "tecrübesi", "uyum", "uyumu", "uyumlu", "yetenek",
-        }
         normalized_source = source.casefold()
         source_words = set(re.findall(r"\w+", normalized_source))
-
-        def appears_in_source(word: str) -> bool:
-            return any(
-                word == source_word
-                or (len(word) >= 4 and source_word.startswith(word))
-                or (len(source_word) >= 4 and word.startswith(source_word))
-                for source_word in source_words
-            )
 
         def is_grounded(criterion: Criterion) -> bool:
             if CriteriaService._is_exact_label_match(criterion.label, normalized_source):
@@ -198,9 +202,13 @@ class CriteriaService:
             meaningful_words = [
                 word
                 for word in re.findall(r"\w+", criterion.label.casefold())
-                if len(word) >= 3 and not word.isdigit() and word not in generic_words
+                if len(word) >= 3
+                and not word.isdigit()
+                and word not in _GENERIC_CRITERION_WORDS
             ]
-            return bool(meaningful_words) and all(appears_in_source(word) for word in meaningful_words)
+            return bool(meaningful_words) and all(
+                _appears_in_words(word, source_words) for word in meaningful_words
+            )
 
         return [criterion for criterion in criteria if is_grounded(criterion)]
 

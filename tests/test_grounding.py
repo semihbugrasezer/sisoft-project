@@ -3,7 +3,7 @@
 Gerçek bir canlı koşu bulgusundan doğdu: 7B model Türkçe aksanlı bir ismi
 kopyalarken harf değiştirdi (docs/VALIDATION.md koşu #6).
 """
-from app.domain.grounding import is_grounded_in_source
+from app.domain.grounding import is_grounded_claim_in_source, is_grounded_in_source
 
 CV = """Semih Buğra Sezer
 Yazılım Geliştirici
@@ -44,3 +44,15 @@ def test_empty_or_missing_name_is_not_grounded():
     assert not is_grounded_in_source(None, CV)
     assert not is_grounded_in_source("", CV)
     assert not is_grounded_in_source("   ", CV)
+
+
+def test_evidence_grounding_tolerates_diacritics_and_one_copy_typo():
+    assert is_grounded_claim_in_source(
+        "8 yıldık React uzmanlık deneyimim",
+        "8 yillik React uzmanlik deneyimim",
+    )
+
+
+def test_evidence_grounding_rejects_invented_terms_and_numbers():
+    assert not is_grounded_claim_in_source("React ve Kubernetes", "React")
+    assert not is_grounded_claim_in_source("React ile 10 yıl", "React ile 8 yil")

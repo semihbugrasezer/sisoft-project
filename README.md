@@ -34,7 +34,7 @@ Gerçek Telegram üzerinden, gerçek yerel Ollama sunucusuna karşı çalıştı
 | Bağlamı koruyan sohbet | Sıcak pencere (40 mesaj) + rolling summary |
 | Dinamik kriter tanımlama | Yapılandırılmış LLM çıkarımı, komut gerekmez |
 | PDF doğrulama | Bozuk / şifreli / okunamaz / geçersiz belge reddi |
-| CV normalizasyonu | LLM Extraction → `CandidateProfile`; aday adı kaynak metne karşı doğrulanır |
+| CV normalizasyonu | LLM Extraction → `CandidateProfile`; aday adı ve çıkarılan beceriler kaynak metne karşı doğrulanır |
 | Tekli CV analizi | Kriter skorları + güçlü/zayıf yönler + tavsiyeler (Markdown) |
 | Çoklu CV sıralama | En fazla 5 CV → backend'de deterministik top-3 JSON |
 | Kilitlenmeyen altyapı | Batch işlenirken bot yanıt vermeye devam eder |
@@ -69,6 +69,26 @@ Aritmetik ortalama ve sıralama LLM'e değil backend'e aittir
 (`app/domain/scoring.py`). Katman sorumlulukları, bağımlılık yönü ve hata
 yayılımı: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
+## Proje Yapısı
+
+```text
+app/
+├── domain/                  Şemalar, hatalar, LLM portu, grounding ve skorlama
+├── application/             Sohbet, kriter, tekli ve toplu CV use-case'leri
+├── infrastructure/          LLM, PDF ve SQLite adaptörleri
+├── presentation/telegram/   Handler, router, formatter ve albüm toplama
+├── config.py                Ortam yapılandırması
+└── container.py             Composition root / bağımlılık kurulumu
+scripts/                     Mock veri üretimi ve gerçek-model kabul testi
+tests/                       Birim ve entegrasyon testleri
+docs/                        Mimari, izlenebilirlik ve canlı doğrulama kanıtları
+main.py                      Long-polling giriş noktası
+```
+
+Bu yapı katman sorumluluklarını ayırır; yalnız gerçekten birden fazla
+implementasyonu bulunan LLM erişimi port/adapter ile soyutlanır. Ayrıntılı dosya
+haritası ve gerçek bağımlılık yönü [Mimari](docs/ARCHITECTURE.md) belgesindedir.
+
 ## Önkoşullar
 
 - Python 3.13 veya 3.14
@@ -96,6 +116,7 @@ Başlıca ayarlar (tamamı `.env.example` içinde açıklamalarıyla birlikte):
 | `LLM_BACKEND` | `ollama` | `ollama` veya `openai_compatible` (LM Studio / vLLM) |
 | `LLM_BASE_URL` | `http://localhost:11434` | LLM sunucu adresi |
 | `LLM_MODEL` | `qwen2.5:7b` | Kullanılacak model |
+| `CHAT_RETENTION_HOURS` | `168` | Sohbet mesajları ve rolling summary için açılış temizliği yaş eşiği |
 | `CV_RETENTION_HOURS` | `24` | Açılış temizliğinde kullanılan yaş eşiği: bu yaştan eski, analiz edilmemiş CV'ler silinir |
 
 LM Studio'ya geçmek için yalnızca üç satır değişir (`LLM_BACKEND=openai_compatible`,
@@ -144,8 +165,9 @@ Ayrıntı:
   puanlama bu şema üzerinden yürür (ödevin çekirdek şartı).
 - **Ortalama LLM'e yaptırılmaz** — aritmetik ve sıralama backend'de
   deterministik hesaplanır.
-- **Şema geçerliliği ≠ anlamsal geçerlilik** — kanıtsız yüksek puan ve kaynak
-  metinde geçmeyen aday adı reddedilir.
+- **Şema geçerliliği ≠ anlamsal geçerlilik** — yüksek skor kanıtındaki somut
+  iddialar hem normalize profilde hem ham kaynakta bulunmalı; kriter kimlikleri
+  tanımlı kümeyle birebir eşleşmelidir.
 - **Batch'te toplu LLM isteği** — tek yerel modeli N eşzamanlı istekle boğmak
   yerine iki toplu çağrı; PDF doğrulama yine paraleldir.
 - **Pragmatik katmanlı mimari** — yalnızca LLM erişimi port/adapter ile
@@ -156,7 +178,7 @@ Gerekçeler ve değerlendirilip reddedilen alternatifler:
 
 ## Bilinen Sınırlamalar
 
-- **Yerel model gecikmesi** — 5 CV'lik batch bu donanımda ~14 dakika sürer;
+- **Yerel model gecikmesi** — 5 CV'lik batch bu donanımda ~8–17 dakika sürer;
   darboğaz model/donanım, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler net bir hatayla reddedilir.
 - **Metin sınırı** — çok uzun CV'ler kırpılır; kullanıcı uyarılır.

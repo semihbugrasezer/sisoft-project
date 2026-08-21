@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 from telegram.error import BadRequest
 
+from app.domain.errors import NoCriteriaDefinedError
 from app.domain.models import (
     CandidateProfile,
     Contact,
@@ -16,6 +17,8 @@ from app.domain.models import (
 from app.presentation.telegram.handlers import (
     _process_files,
     analyze_command,
+    criteria_command,
+    document_message,
     reset_command,
     text_message,
 )
@@ -443,3 +446,118 @@ async def test_reset_waits_for_in_flight_chat_before_clearing_history():
     finish.set()
     await asyncio.gather(chat_task, reset_task)
     assert order == ["reply", "clear_history"]
+
+
+@pytest.mark.asyncio
+async def test_reset_waits_for_in_flight_criteria_command_before_clearing():
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    order = []
+    criteria = [Criterion(id="react", label="React", description="x")]
+
+    class CriteriaService:
+        async def define_criteria(self, chat_id, text):
+            started.set()
+            await finish.wait()
+            order.append("criteria_saved")
+            return criteria
+
+    class Repo:
+        async def clear_history(self, chat_id):
+            order.append("clear_history")
+
+        async def clear_criteria(self, chat_id):
+            pass
+
+        async def clear_pending_files(self, chat_id):
+            pass
+
+    async def reply_text(*args, **kwargs):
+        pass
+
+    context = SimpleNamespace(
+        args=["React"],
+        application=SimpleNamespace(
+            bot_data={
+                "container": SimpleNamespace(
+                    criteria_service=CriteriaService(), repo=Repo()
+                )
+            }
+        ),
+    )
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=1),
+        message=SimpleNamespace(reply_text=reply_text),
+    )
+
+    criteria_task = asyncio.create_task(criteria_command(update, context))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    reset_task = asyncio.create_task(reset_command(update, context))
+    await asyncio.sleep(0)
+
+    assert not reset_task.done()
+    finish.set()
+    await asyncio.gather(criteria_task, reset_task)
+    assert order == ["criteria_saved", "clear_history"]
+
+
+@pytest.mark.asyncio
+async def test_reset_waits_for_in_flight_caption_criteria_before_clearing():
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    order = []
+
+    class CriteriaService:
+        async def define_if_requested(self, chat_id, text):
+            started.set()
+            await finish.wait()
+            order.append("criteria_saved")
+
+        async def get_active_criteria(self, chat_id):
+            raise NoCriteriaDefinedError()
+
+    class Repo:
+        async def clear_history(self, chat_id):
+            order.append("clear_history")
+
+        async def clear_criteria(self, chat_id):
+            pass
+
+        async def clear_pending_files(self, chat_id):
+            pass
+
+    async def reply_text(*args, **kwargs):
+        pass
+
+    document = SimpleNamespace(file_name="cv.pdf", file_size=1)
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "container": SimpleNamespace(
+                    criteria_service=CriteriaService(), repo=Repo()
+                )
+            }
+        )
+    )
+    document_update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=1),
+        message=SimpleNamespace(
+            document=document,
+            caption="React kriteri",
+            reply_text=reply_text,
+        ),
+    )
+    reset_update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=1),
+        message=SimpleNamespace(reply_text=reply_text),
+    )
+
+    caption_task = asyncio.create_task(document_message(document_update, context))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    reset_task = asyncio.create_task(reset_command(reset_update, context))
+    await asyncio.sleep(0)
+
+    assert not reset_task.done()
+    finish.set()
+    await asyncio.gather(caption_task, reset_task)
+    assert order == ["criteria_saved", "clear_history"]

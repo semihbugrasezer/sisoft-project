@@ -14,7 +14,7 @@ Sütunların anlamı:
 | ID | Gereksinim | Uygulama | Doğrulama |
 |---|---|---|---|
 | FR-01 | Günlük sohbet, yerel dil modeliyle mantıklı/akıcı yanıt | `app/application/chat_service.py` | `tests/test_chat_service.py`; canlı koşu #4, #6 |
-| FR-02 | Sohbet geçmişi backend'de güvenli yönetilir, bağlam kaybolmaz | `chat_service.py` (sıcak pencere `CHAT_HISTORY_LIMIT`=40 + rolling summary), `sqlite_repo.py` | `tests/test_chat_service.py`, `tests/test_sqlite_repo.py`; canlı koşu #4 |
+| FR-02 | Sohbet geçmişi backend'de güvenli yönetilir, bağlam kaybolmaz | `chat_service.py` (sıcak pencere `CHAT_HISTORY_LIMIT`=40 + rolling summary), `sqlite_repo.py` (reset + 168 saatlik açılış temizliği) | `tests/test_chat_service.py`, `tests/test_sqlite_repo.py`; canlı koşu #4 |
 | FR-03 | Sabit kriter yok; kullanıcı kriterleri serbest metinle tanımlar | `app/application/criteria_service.py` (LLM intent + extraction, komut zorunlu değil) | `tests/test_criteria_service.py` (özellikle `test_free_text_without_keyword_can_define_criteria`) |
 | FR-04 | Kullanıcının tanımladığı kriterlerin tamamı korunur; skorlama bunlara göre yapılır | `criteria_service.py` → intent sonrasında özel extraction + `_grounded_criteria` (kısmi uydurma kriter reddi) | `tests/test_criteria_service.py::test_natural_language_criteria_uses_dedicated_extraction_before_save`, `::test_drops_partially_grounded_label_with_unrequested_terms` |
 | FR-05 | Tekli CV → dinamik kriterlere göre nitel analiz raporu | `app/application/cv_analysis_service.py::analyze` | `tests/test_cv_analysis_service.py`; canlı koşu #6 |
@@ -46,7 +46,7 @@ Sütunların anlamı:
 | ID | Kriter | Nerede görülür |
 |---|---|---|
 | EVAL-01 | Dinamik prompt başarısı — sohbetten gelen kriterleri prompt'a gömme, tekli/çoklu modları kararlı çalıştırma | `infrastructure/llm/prompts.py`, `criteria_service.py`; [LLM_PIPELINE.md](./LLM_PIPELINE.md) |
-| EVAL-02 | PDF doğrulama ve LLM Extraction kalitesi | `pymupdf_parser.py`, `CandidateProfile`; `CriterionScore` kanıtsız yüksek puanı, `CVAnalysisService` profile dayanmayan evidence'ı reddeder |
+| EVAL-02 | PDF doğrulama ve LLM Extraction kalitesi | `pymupdf_parser.py`, `CandidateProfile`; `CVAnalysisService` kaynakta olmayan beceriyi filtreler, profile + ham kaynağa dayanmayan skoru deterministik olarak `0`'a indirir |
 | EVAL-03 | Asenkron süreç ve bağlam yönetimi | [CONCURRENCY.md](./CONCURRENCY.md); rolling summary (`chat_service.py`) |
 | EVAL-04 | AI destekli geliştirmede üretilen mimariye/koda hâkimiyet | [AI_ASSISTED_DEVELOPMENT.md](./AI_ASSISTED_DEVELOPMENT.md), [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) |
 

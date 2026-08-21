@@ -100,6 +100,25 @@ class SQLiteRepo:
         self._conn.execute("DELETE FROM chat_summary WHERE chat_id = ?", (chat_id,))
         self._conn.commit()
 
+    async def purge_expired_chat_history(self, max_age_seconds: float) -> int:
+        """Eski mesajları ve bu mesajları içerebilecek özetleri açılışta temizler."""
+        cutoff = time.time() - max_age_seconds
+        async with self._lock:
+            deleted = await asyncio.to_thread(self._purge_expired_chat_history_sync, cutoff)
+        if deleted:
+            logger.info("%d adet süresi geçmiş sohbet mesajı silindi", deleted)
+        return deleted
+
+    def _purge_expired_chat_history_sync(self, cutoff: float) -> int:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM chat_summary WHERE chat_id IN ("
+                "SELECT DISTINCT chat_id FROM chat_history WHERE ts < ?)",
+                (cutoff,),
+            )
+            cursor = self._conn.execute("DELETE FROM chat_history WHERE ts < ?", (cutoff,))
+        return cursor.rowcount
+
     # --- rolling summary (bağlam penceresi dışına taşan geçmiş) ------------
 
     async def get_summary(self, chat_id: int) -> str | None:

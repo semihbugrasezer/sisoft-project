@@ -39,8 +39,8 @@ Ayrıntı: [docs/LLM_PIPELINE.md](docs/LLM_PIPELINE.md) → Prompt Injection.
 
 | Veri | Nerede | Ne kadar |
 |---|---|---|
-| Sohbet geçmişi | SQLite, düz metin | `/reset` çağrılana kadar |
-| Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` çağrılana kadar |
+| Sohbet geçmişi | SQLite, düz metin | `/reset` ile hemen; ayrıca açılışta `CHAT_RETENTION_HOURS`'tan (varsayılan 168 saat) eski mesajlar silinir |
+| Sohbet özetleri (rolling summary) | SQLite, düz metin | `/reset` ile hemen; eski mesajı silinen sohbetin özeti açılış temizliğinde birlikte silinir |
 | Kriterler | SQLite, düz metin | `/reset` veya yeni kriter tanımına kadar |
 | **CV dosyaları (`/batch` akışı)** | SQLite BLOB | İki katmanlı temizlik: (1) `/analyze`, dosyaları atomik olarak alıp analiz başlamadan kuyruktan çıkarır; analiz sırasında yüklenen yeni dosyalar silinmez; (2) kullanıcı hiç `/analyze`/`/cancel` yazmazsa bir sonraki açılışta `CV_RETENTION_HOURS`'tan (varsayılan 24 saat) eski kayıtlar silinir. Temizlik yalnız açılışta çalıştığı için kesintisiz çalışan bir botta bu bir üst sınır garantisi değildir. |
 | CV dosyaları (albüm/tekli yükleme) | Yalnızca bellek | Diske hiç yazılmaz |
@@ -51,9 +51,9 @@ Bu demo aşağıdakileri **sağlamaz**. Gerçek İK verisiyle kullanmadan önce
 eklenmelidir:
 
 - **Encryption-at-rest** — SQLite verisi şifrelenmez.
-- **Sohbet geçmişi için TTL yok** — `/reset` çağrılmadıkça süresiz kalır.
-  (Bekleyen CV'ler için TTL uygulanmıştır, yukarıya bakın.) Üretimde sohbet
-  verisi için de bir saklama politikası tanımlanmalıdır.
+- **TTL temizliği yalnız açılışta çalışır** — `CHAT_RETENTION_HOURS` ve
+  `CV_RETENTION_HOURS` kesintisiz çalışan bir süreçte kesin üst sınır değildir.
+  Üretimde zamanlanmış silme işi ve kuruma uygun saklama politikası gerekir.
 - **Uzak LLM ucu** — `LLM_BASE_URL` uzak bir sunucuya yönlendirilirse CV metni
   ve sohbet içeriği o sunucuya gönderilir. Varsayılan yapılandırma yereldir;
   uzak uç kullanılacaksa HTTPS ve sağlayıcının veri politikası doğrulanmalıdır.

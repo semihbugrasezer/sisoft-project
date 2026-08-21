@@ -105,6 +105,30 @@ async def test_clear_history_also_clears_summary(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_purge_expired_chat_history_clears_affected_summary_only(tmp_path):
+    repo = SQLiteRepo(str(tmp_path / "chat.db"))
+    await repo.add_message(1, "user", "eski")
+    await repo.add_message(1, "assistant", "yeni")
+    await repo.set_summary(1, "eski kişisel özet", 1)
+    await repo.add_message(2, "user", "etkilenmeyen")
+    await repo.set_summary(2, "korunacak özet", 3)
+
+    repo._conn.execute(
+        "UPDATE chat_history SET ts = ? WHERE content = ?",
+        (time.time() - 48 * 3600, "eski"),
+    )
+    repo._conn.commit()
+
+    deleted = await repo.purge_expired_chat_history(24 * 3600)
+
+    assert deleted == 1
+    assert [item["content"] for item in await repo.get_messages(1)] == ["yeni"]
+    assert await repo.get_summary(1) is None
+    assert await repo.get_summary(2) == "korunacak özet"
+    await repo.close()
+
+
+@pytest.mark.asyncio
 async def test_try_add_pending_file_enforces_limit_atomically(tmp_path):
     repo = SQLiteRepo(str(tmp_path / "chat.db"))
     for index in range(5):
