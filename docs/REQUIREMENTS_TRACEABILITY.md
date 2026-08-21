@@ -43,12 +43,16 @@ Sütunların anlamı:
 
 ## Değerlendirme Kriterleri (PDF §Değerlendirme Kriterleri)
 
-| ID | Kriter | Nerede görülür |
-|---|---|---|
-| EVAL-01 | Dinamik prompt başarısı — sohbetten gelen kriterleri prompt'a gömme, tekli/çoklu modları kararlı çalıştırma | `infrastructure/llm/prompts.py`, `criteria_service.py`; [LLM_PIPELINE.md](./LLM_PIPELINE.md) |
-| EVAL-02 | PDF doğrulama ve LLM Extraction kalitesi | `pymupdf_parser.py`, `CandidateProfile`; `CVAnalysisService` kaynakta olmayan beceriyi filtreler, profile + ham kaynağa dayanmayan skoru deterministik olarak `0`'a indirir |
-| EVAL-03 | Asenkron süreç ve bağlam yönetimi | [CONCURRENCY.md](./CONCURRENCY.md); rolling summary (`chat_service.py`) |
-| EVAL-04 | AI destekli geliştirmede üretilen mimariye/koda hâkimiyet | [AI_ASSISTED_DEVELOPMENT.md](./AI_ASSISTED_DEVELOPMENT.md), [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) |
+Bu bölüm mülakat değerlendirme formundaki dört başlığı doğrudan savunulabilir
+kanıta bağlar. “Uygulama” sütunu gerçek akışı, “Doğrulama” sütunu ise iddianın
+hangi test veya canlı koşuyla sınandığını gösterir.
+
+| ID | PDF değerlendirme kriteri | Uygulama ve savunma noktası | Doğrulama |
+|---|---|---|---|
+| EVAL-01 | **Dinamik Prompt Başarısı** | `CriteriaService.define_if_requested` mesajın kriter mi sohbet mi olduğunu structured output ile belirler; kriter niyetinde `define_criteria` özel extraction prompt'unu her zaman çalıştırır. Grounding ve tamlık kontrolünden geçen aynı kriter listesi `CVAnalysisService` tarafından hem tekli `EvaluationResult` hem çoklu `MultiAnalysisResponse` akışına taşınır. Prompt rolleri `prompts.py` içinde ayrıdır; aritmetik ortalama prompt'a bırakılmaz. | `tests/test_criteria_service.py`, `tests/test_cv_analysis_service.py`, `scripts/validate_assignment.py`; [LLM Hattı](./LLM_PIPELINE.md), canlı Ollama kriter + tekli + 5-CV koşusu ([VALIDATION.md](./VALIDATION.md)) |
+| EVAL-02 | **PDF Doğrulama & LLM Extraction Kalitesi** | `validate_and_extract_text` boş, PDF imzası olmayan, bozuk, şifreli, sayfasız ve metinsiz belgeleri LLM'den önce keser. Geçerli ham metin `CV_EXTRACTOR_SYSTEM` ile `CandidateProfile` JSON şemasına çıkarılır; evaluator yalnız bu normalize profili görür. Pydantic `extra="forbid"` yapısal sapmayı, grounding katmanı kaynak-dışı ad/beceri/kanıtı engeller. | `tests/test_pdf_parser.py`, `tests/test_cv_layouts.py`, `tests/test_models.py`, `tests/test_grounding.py`, `tests/test_cv_analysis_service.py`; beş farklı mock şablon ve dört geçersiz fixture; [Canlı Doğrulama](./VALIDATION.md) |
+| EVAL-03 | **Asenkron Süreç & Bağlam Yönetimi** | `concurrent_updates(8)` farklı update'leri eşzamanlı kabul eder; PyMuPDF ve SQLite çağrıları `asyncio.to_thread` ile event loop dışına taşınır. Aynı sohbette mesaj/kriter/reset sırası `chat_id` bazlı metin kilidiyle korunurken CV analizi ayrı kilit ailesinde çalışır. Son 40 mesaj sıcak pencere, eski bölüm rolling summary olarak backend'de tutulur. | `tests/test_router.py`, `tests/test_handlers.py`, `tests/test_chat_service.py`, `tests/test_sqlite_repo.py`; özellikle batch sürerken sohbet, aynı sohbet sırası ve reset yarış testleri; gerçek Telegram rolling-summary/batch koşuları; [Eşzamanlılık](./CONCURRENCY.md) |
+| EVAL-04 | **Vibe Coding Hakimiyeti** | AI araçlarının rolü, insan onay kapıları ve reddedilen öneriler kaydedilmiştir. Katman bağımlılıkları, LLM portu, Pydantic doğrulama, async kilitler, hata hiyerarşisi ve fallback davranışları ayrı belgelerde gerekçelendirilir. Canlı koşuda bulunan dil sızıntısı, Markdown fallback, timeout, grounding ve yarış koşulları regresyon testleriyle kapatılmıştır. | [AI Destekli Geliştirme](./AI_ASSISTED_DEVELOPMENT.md), [Mimari](./ARCHITECTURE.md), [Tasarım Kararları](./DESIGN_DECISIONS.md), [Test Stratejisi](./TESTING.md), [Canlı Doğrulama](./VALIDATION.md) |
 
 ## Kapsam Dışı Bırakılanlar
 
