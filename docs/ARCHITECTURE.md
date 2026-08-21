@@ -45,7 +45,7 @@ app/
 │   ├── models.py           Pydantic şemaları (LLM çıktıları buraya zorlanır)
 │   ├── errors.py           AppError hiyerarşisi (PDFValidationError, LLMOutputValidationError, ...)
 │   ├── ports.py            LLMPort arayüzü (infrastructure bunu uygular)
-│   ├── grounding.py        Kaynak-doğrulama (candidateName kaynak metinde var mı)
+│   ├── grounding.py        Aday adı, beceri ve skor kanıtı için kaynak-doğrulama
 │   └── scoring.py          Ortalama hesaplama, top-3 sıralama — LLM'e bağımlı değil
 │
 ├── application/            Use-case servisleri, domain + infrastructure'ı birleştirir
@@ -62,13 +62,15 @@ app/
 │   ├── pdf/pymupdf_parser.py           PDF doğrulama + metin çıkarma
 │   └── persistence/sqlite_repo.py      Sohbet geçmişi, kriter, pending-file kalıcılığı
 │
-└── presentation/telegram/  Telegram I/O — iş mantığı burada değil, yalnızca yönlendirme
-    ├── handlers.py          Komut/mesaj handler'ları
-    ├── router.py            Application kurulumu, handler kaydı
-    ├── formatter.py         Markdown rapor + JSON çıktı formatlama
-    └── media_group_collector.py  Albüm (çoklu dosya) toplama + debounce
+├── presentation/telegram/  Telegram I/O — iş mantığı burada değil, yalnızca yönlendirme
+│   ├── handlers.py          Komut/mesaj handler'ları
+│   ├── router.py            Application kurulumu, handler kaydı
+│   ├── formatter.py         Markdown rapor + JSON çıktı formatlama
+│   └── media_group_collector.py  Albüm (çoklu dosya) toplama + debounce
+│
+├── config.py                Ortam değişkenleri ve varsayılanlar
+└── container.py             Tüm bağımlılıkları tek yerde kurar (DI, framework yok)
 
-container.py                 Tüm bağımlılıkları tek yerde kurar (DI, framework yok)
 main.py                      Entrypoint: config → container → polling
 ```
 
@@ -196,6 +198,6 @@ işi, LLM istek limiti) ayrı bir dokümanda ayrıntılı anlatılıyor:
   [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md) ve [CONCURRENCY.md](./CONCURRENCY.md)'de.
 - **20.000 karakter extraction sınırı** — çok uzun CV'ler kırpılır; kullanıcı
   uyarılır.
-- **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md). Bekleyen CV'ler
-  için `CV_RETENTION_HOURS` ile açılışta TTL temizliği yapılır; sohbet geçmişi
-  için TTL yoktur.
+- **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md). Sohbet geçmişi
+  ve bekleyen CV'ler sırasıyla `CHAT_RETENTION_HOURS` ve `CV_RETENTION_HOURS`
+  ile açılışta temizlenir; bu, kesintisiz çalışan süreçte kesin üst sınır değildir.

@@ -136,6 +136,11 @@ async def run(full: bool) -> int:
             f"Kriter eksiksizliği: {len(found)}/{len(EXPECTED_CRITERIA)}",
             f"çıkarılan: {labels}",
         )
+        report.check(
+            len(criteria or []) == len(EXPECTED_CRITERIA),
+            "Kriterlerde eksik/fazla/tekrar yok",
+            f"beklenen: {len(EXPECTED_CRITERIA)}, gelen: {len(criteria or [])}",
+        )
         if not criteria:
             print("\nKriter çıkarılamadı — sonraki adımlar atlanıyor.")
             return 1

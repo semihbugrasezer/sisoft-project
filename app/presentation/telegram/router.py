@@ -20,13 +20,17 @@ from app.presentation.telegram.handlers import (
 
 def build_application(token: str, container: Container) -> Application:
     async def _post_init(app: Application) -> None:
+        chat_hours = container.config.chat_retention_hours
+        if chat_hours > 0:
+            await container.repo.purge_expired_chat_history(chat_hours * 3600)
+
         # Terk edilmiş CV'leri açılışta temizle: kullanıcı /batch ile yükleyip hiç
         # /analyze veya /cancel yazmadıysa ya da süreç sert şekilde sonlandıysa
         # (finally çalışmaz) dosyalar SQLite'ta kalır. CV kişisel veridir —
         # süresiz saklanmamalı (bkz. SECURITY.md).
-        hours = container.config.cv_retention_hours
-        if hours > 0:
-            await container.repo.purge_expired_pending_files(hours * 3600)
+        cv_hours = container.config.cv_retention_hours
+        if cv_hours > 0:
+            await container.repo.purge_expired_pending_files(cv_hours * 3600)
 
     async def _post_shutdown(app: Application) -> None:
         await container.llm.aclose()

@@ -12,7 +12,7 @@ katmanını ve her birinin neden farklı bir mekanizma kullandığını anlatır
    → aynı anda 8 update işlenebilir; biri LLM beklerken diğerleri akar
 
 2. Sohbet başına sıralama — İKİ AYRI lock ailesi
-   chat_locks_text[chat_id]      → niyet sınıflandırma + sohbet yanıtı
+   chat_locks_text[chat_id]      → kriter yazımı + sohbet + /reset
    chat_locks_analysis[chat_id]  → CV analizi (tekli ve batch)
    → AYNI sohbette her aile kendi içinde sıralı
    → FARKLI sohbetler birbirini beklemez
@@ -31,6 +31,14 @@ katmanını ve her birinin neden farklı bir mekanizma kullandığını anlatır
 
 Her katman farklı bir problemi çözer; biri diğerinin yerine geçmez.
 
+Context7 üzerinden kontrol edilen resmi `python-telegram-bot` v22.5
+[`ApplicationBuilder` dokümantasyonu](https://docs.python-telegram-bot.org/en/v22.5/telegram.ext.applicationbuilder.html), update işlemenin varsayılan olarak sıralı
+olduğunu ve `concurrent_updates(...)` ile açıkça eşzamanlı hale getirildiğini
+doğrular. Aynı lifecycle API'sindeki async `post_shutdown` callback'i de LLM ve
+SQLite bağlantılarını await ederek kapatmak için kullanılır. Bu yüzden sekizli
+update kabulü ile sohbet-başına kilitler birbirinin alternatifi değil,
+tamamlayıcısıdır.
+
 ## Neden chat_id Bazlı Kilit (Global Kilit Değil)
 
 `concurrent_updates(8)` aynı sohbetten gelen iki mesajın da eşzamanlı
@@ -42,7 +50,7 @@ Global tek bir kilit bunu çözerdi ama botu tümüyle seri hale getirirdi —
 Bunun yerine `handlers.py` `chat_id` başına **iki ayrı** lock ailesi tutar:
 
 ```python
-# Sohbet akışı: niyet sınıflandırma + yanıt tek kritik bölümde
+# Metin durumu: kriter yazımı + sohbet + reset tek kritik bölümde
 async with _chat_lock(context, chat_id, "text"):
     criteria = await criteria_service.define_if_requested(chat_id, text)
     ...
@@ -60,7 +68,13 @@ bitip `ChatService.reply()`'a önce girebilir ve sohbet geçmişi Telegram'daki
 geliş sırasından farklı bir sırayla yazılır. Bu davranış bir regresyon
 testiyle korunuyor: `test_same_chat_messages_are_processed_in_arrival_order`.
 
-İki ailenin ayrı tutulması da kasıtlıdır: tek lock olsaydı 14 dakikalık bir
+`/criteria`, PDF caption'ından kriter tanımlama ve `/reset` de aynı `text`
+kilidini kullanır. Böylece reset sürmekte olan kriter çıkarımını bekler ve eski
+kriterler reset tamamlandıktan sonra yeniden yazılamaz. Bu iki giriş yolu
+`test_reset_waits_for_in_flight_criteria_command_before_clearing` ve
+`test_reset_waits_for_in_flight_caption_criteria_before_clearing` ile korunur.
+
+İki ailenin ayrı tutulması da kasıtlıdır: tek lock olsaydı 17 dakikaya varan bir
 batch analizi boyunca aynı sohbetten mesaj atmak imkânsız olurdu.
 
 Sonuç: A sohbeti uzun bir batch analizi çalıştırırken hem B sohbeti hem de
@@ -126,10 +140,10 @@ maliyetini ve timeout riskini artırır. Daha önceki on-çağrılı tasarım ti
 sorunları yaşadığı için terk edilmişti. Ayrıntı ve ölçümler:
 [DESIGN_DECISIONS.md](./DESIGN_DECISIONS.md), [VALIDATION.md](./VALIDATION.md).
 
-Ölçülen süre (5 CV, `qwen2.5:7b`, Apple Silicon): ~852s (259.6s extraction +
-592.4s evaluation). Darboğaz mimari değil, yerel modelin kısıtlı-JSON üretim
-hızıdır. GPU destekli bir vLLM/OpenAI-uyumlu uca geçiş yalnızca konfigürasyon
-değişikliğidir (`LLM_BACKEND=openai_compatible`).
+Ölçülen süre (5 CV, `qwen2.5:7b`, Apple Silicon): 463.5–1003.8s (~8–17 dk).
+Darboğaz mimari değil, yerel modelin kısıtlı-JSON üretim hızıdır. GPU destekli
+bir vLLM/OpenAI-uyumlu uca geçiş yalnızca konfigürasyon değişikliğidir
+(`LLM_BACKEND=openai_compatible`).
 
 ## LLM Semaforu Neden Gerekli
 

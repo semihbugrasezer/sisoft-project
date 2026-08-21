@@ -112,6 +112,17 @@ async def test_completeness_ignores_generic_criterion_word_in_free_text():
     assert criteria[0].label == "React deneyimi"
 
 
+@pytest.mark.asyncio
+async def test_completeness_does_not_treat_single_criterion_prose_as_missing_terms():
+    llm = FakeLLMParaphrasedLabel()
+    criteria = await CriteriaService(llm, FakeRepo()).define_criteria(
+        1, "React konusunda en az 3 yıl deneyim arıyorum"
+    )
+
+    assert llm.calls == 1
+    assert criteria[0].label == "React deneyimi"
+
+
 def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
     result = CriteriaExtractionResult(
         criteria=[
@@ -176,6 +187,32 @@ async def test_natural_language_criteria_uses_dedicated_extraction_before_save()
     assert llm.response_models == [CriteriaIntentResult, CriteriaExtractionResult]
     assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
     assert [item["id"] for item in repo.saved] == ["react", "clean_code", "remote"]
+
+
+@pytest.mark.asyncio
+async def test_intent_and_extractor_semantic_duplicate_is_saved_once():
+    class DuplicateRemoteLLM:
+        async def structured_chat(self, system, user, response_model, temperature=0.0, model=None):
+            remote = Criterion(
+                id="remote_compatible",
+                label="uzaktan çalışma uyumlu",
+                description="x",
+            )
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=[remote])
+            return CriteriaExtractionResult(
+                criteria=[
+                    remote.model_copy(
+                        update={"id": "remote_compatibility", "label": "uzaktan çalışma uyumu"}
+                    )
+                ]
+            )
+
+    criteria = await CriteriaService(DuplicateRemoteLLM(), FakeRepo()).define_if_requested(
+        1, "uzaktan çalışma uyumuna göre değerlendir"
+    )
+
+    assert [criterion.label for criterion in criteria] == ["uzaktan çalışma uyumlu"]
 
 
 @pytest.mark.asyncio

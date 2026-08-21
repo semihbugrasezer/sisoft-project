@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 
 def _normalize(text: str) -> str:
-    # NFKC: farklı Unicode gösterimlerini (örn. birleşik/ayrık aksan) tek biçime indirger.
-    # casefold: Unicode-farkındalıklı küçük harfe çevirme (str.lower()'dan güçlü).
-    return unicodedata.normalize("NFKC", text).casefold()
+    # LLM bazen ASCII kaynak alıntısını Türkçe aksanlarla yeniden yazar. Aksanı
+    # ayırıp kaldırmak içerik terimini korurken bu yüzey farkını tolere eder.
+    decomposed = unicodedata.normalize("NFKD", text).casefold().replace("ı", "i")
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
 def _words(text: str) -> list[str]:
@@ -42,10 +44,25 @@ def is_grounded_in_source(value: str | None, source_text: str) -> bool:
     return all(word in source_words for word in _words(value))
 
 
-_EVIDENCE_STOPWORDS = {
+_EVIDENCE_STOPWORDS = {_normalize(word) for word in {
     "aday", "alanında", "bir", "bu", "candidate", "deneyim", "deneyimi",
     "deneyimlidir", "experience", "ile", "kanıt", "tecrübe", "the", "ve", "yıl",
-}
+}}
+
+
+def _evidence_words(value: str) -> set[str]:
+    return {
+        word for word in _words(value)
+        if (len(word) >= 3 or word.isdigit()) and word not in _EVIDENCE_STOPWORDS
+    }
+
+
+def _term_matches_source(term: str, source_term: str) -> bool:
+    if term == source_term:
+        return True
+    if term.isdigit() or source_term.isdigit() or min(len(term), len(source_term)) < 5:
+        return False
+    return term[:5] == source_term[:5] or SequenceMatcher(None, term, source_term).ratio() >= 0.82
 
 
 def has_grounded_term_in_source(value: str, source_text: str) -> bool:
@@ -56,9 +73,16 @@ def has_grounded_term_in_source(value: str, source_text: str) -> bool:
     açıklayabilir; burada bağlaç/açıklama kelimeleri değil, React/PostgreSQL gibi
     en az bir içerik teriminin profile dayanması zorunludur.
     """
-    evidence_words = {
-        word for word in _words(value)
-        if len(word) >= 3 and word not in _EVIDENCE_STOPWORDS
-    }
+    evidence_words = _evidence_words(value)
     source_words = set(_words(source_text))
     return bool(evidence_words & source_words)
+
+
+def is_grounded_claim_in_source(value: str, source_text: str) -> bool:
+    """Evidence içindeki tüm somut terimler kaynakta bulunmalıdır."""
+    evidence_words = _evidence_words(value)
+    source_words = set(_words(source_text))
+    return bool(evidence_words) and all(
+        any(_term_matches_source(word, source_word) for source_word in source_words)
+        for word in evidence_words
+    )

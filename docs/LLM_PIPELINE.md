@@ -87,12 +87,19 @@ doğrulayamaz. Bu boşluk iki ardışık kontrolle kapatılır:
 
 1. `CriterionScore`: `score >= 20` iken yalnızca "Kanıt yok" türü placeholder
    varsa `ValidationError` fırlatır.
-2. `CVAnalysisService`: yüksek skordaki en az bir evidence maddesinin normalize
-   `CandidateProfile` içindeki somut bir içerik terimine dayandığını doğrular;
-   tamamen profile-dışı cümleyi reddederken doğal dil açıklamalarını kabul eder.
+2. `CVAnalysisService`: yüksek skordaki en az bir evidence maddesinin tüm somut
+   terimlerini hem normalize `CandidateProfile` hem ham PDF kaynak metninde
+   arar. Hiçbir kanıt iki kaynağa birden dayanmıyorsa skor, tüm analizi iptal
+   etmek yerine deterministik olarak `0 / Kanıt yok` değerine indirilir.
 
-İlk kontrol Pydantic retry mekanizmasını tetikler; ikinci kontrol şema-geçerli ama
-profile dayanmayan serbest bir cümlenin sıralamayı etkilemesini engeller.
+İlk kontrol Pydantic retry mekanizmasını tetikler; ikinci kontrol şema-geçerli
+ama profile/ham kaynağa dayanmayan bir cümlenin sıralamayı etkilemesini engeller.
+Bu güvenli düşürme özellikle batch modelinin bir adayın kanıtını başka adaya
+taşıdığı durumda tüm 5-CV sonucunu kaybetmeden sızıntıyı Top-3 hesabından çıkarır.
+Türkçe aksan farkı ve tek karakterlik kopya sapması tolere edilir; yeni terim ve
+sayılar yine reddedilir. Ham metin evaluator prompt'una verilmez, yalnız dönen
+kanıtı deterministik doğrulamak için servis içinde kullanılır. Extraction
+aşamasında kaynakta bulunmayan beceri değerleri de normalize profilden çıkarılır.
 
 Aynı mantık `candidateName` için de uygulanır: Pydantic alanın *string* olduğunu
 doğrular ama *doğru* olduğunu doğrulayamaz. `is_grounded_in_source`
@@ -119,7 +126,7 @@ Bu tek başına bir garanti değildir; savunma katmanlıdır:
 
 1. **Prompt seviyesi** — belge içeriği veri olarak işaretlenir.
 2. **Şema/servis seviyesi** — `extra="forbid"`, puan aralığı (`0-100`), kanıt
-   zorunluluğu ve evidence'ın normalize profile karşı doğrulanması.
+   zorunluluğu, birebir kriter kimliği ve kaynak-dışı skorun `0`'a indirilmesi.
 3. **Mimari seviye** — evaluator ham metni hiç görmez, yalnızca normalize
    profili görür; enjekte edilen talimat metni extraction aşamasında
    şemaya sığmadığı için büyük ölçüde elenir.
@@ -134,9 +141,11 @@ belirleyen bir sınıflandırma çağrısından geçer (`CriteriaIntentResult`: 
 mı `chat` mi). Kriter niyeti tespit edilirse daha odaklı
 `CriteriaExtractionResult` çağrısı her zaman çalışır. Intent çıktısındaki
 grounded kriterler doğrudan kaydedilmez; özel extractor sonucuyla doğrulanmış
-bir seed olarak birleştirilir. Kaynak metindeki anlamlı ölçüt terimleri hâlâ
-kapsanmıyorsa yalnız eksikler için tek düzeltme turu yapılır; tamlık yine
-sağlanmazsa kısmi liste kaydedilmek yerine kontrollü hata döner.
+bir seed olarak birleştirilir. Kullanıcı virgül, noktalı virgül veya "ve/and"
+ile açık bir kriter listesi verdiyse her liste parçasının kapsandığı doğrulanır;
+tek kriteri anlatan doğal dil dolgu kelimeleri ayrı kriter sayılmaz. Açık liste
+parçaları hâlâ eksikse yalnız eksikler için tek düzeltme turu yapılır; tamlık
+yine sağlanmazsa kısmi liste kaydedilmek yerine kontrollü hata döner.
 
 Çıkarılan etiketler kullanıcının metnine **grounded** olmak zorundadır
 (`_grounded_criteria`): etiketteki her anlamlı kelime kullanıcı metninde

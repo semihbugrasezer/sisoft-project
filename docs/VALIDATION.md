@@ -23,12 +23,16 @@ canlı Telegram üzerinden ayrıca doğrulandı.
 
 Bu tur önceki sonuçlara güvenmek yerine kabul script'ini yeniden çalıştırdı.
 Ortam: Python 3.14, Apple M2/16 GB, Ollama `qwen2.5:7b`, LM Studio
-`google/gemma-4-e4b`; başlangıç Git commit'i `45faefe` idi.
+`google/gemma-4-e4b`; başlangıç Git commit'i `45faefe` idi. Son hardening
+tekrarı `origin/main` `0162d35` tabanlı çalışma ağacında yapıldı.
 
 | Backend / aşama | Sonuç | Süre / not |
 |---|---|---|
 | Ollama — kriter niyeti + özel extraction | ✅ 3/3 kriter | 97.5s; `React deneyimi`, `Temiz kod yazımı`, `Uzaktan çalışma uyumu` |
 | Ollama — tekli CV tam hattı | ✅ PASS | 195.1s; profile extraction, 3/3 skor, nitel bölümler ve Markdown başlıkları geçti |
+| Ollama — son `--full` kriter tekrarı | ✅ 3/3, tekrarsız | 117.0s; tam üç kriter çıktı, yakın anlamlı uzaktan-çalışma etiketi çoğaltılmadı |
+| Ollama — son `--full` tekli CV tekrarı | ✅ PASS | 245.0s; çift kaynak kanıt grounding, 3/3 skor, dolu nitel bölümler ve Markdown başlıkları geçti |
+| Ollama — son `--full` 5-CV batch | ✅ PASS | 1003.8s; üç kaynak-dışı skor 0'a indirildi; top-3 ortalamaları bağımsız doğrulandı (`90.0 / 55.0 / 55.0`), nihai JSON şeması geçti |
 | LM Studio — düzeltme öncesi kriter akışı | ⚠️ 2/3 kriter | Birleşik intent çıktısı uzaktan çalışma kriterini atladı; bu bulgu özel extraction turunun her criteria niyetinde zorunlu olmasına yol açtı |
 | LM Studio — düzeltme sonrası tekrar | ⚠️ güvenli red | API ve JSON-schema entegrasyonu çalıştı. `gemma-4-e4b`, intent'te 2/3 ve özel extraction'da 1/3 kriter üretti; eksik-terim turunda da React'i tekrarladı. Servis kısmi listeyi kaydetmeyip kontrollü `LLMOutputValidationError` döndürdü (son koşu 25.4s) |
 
@@ -37,11 +41,15 @@ izin verdiği anlamsal eşdeğerleri (`tecrübe`/`deneyim`, `temiz kod`/`Clean C
 yanlış FAIL saydığı da görüldü. Ölçer bu sınırlı alias'ları tanıyacak şekilde
 düzeltildi; eksik `React` gibi etiketler hâlâ reddedilir.
 
-İlk evidence-grounding denemesi evidence cümlesindeki her kelimeyi profile
-karşı aradığı için doğal dil açıklamalarını fazla katı biçimde reddetti. Son
-kural, yüksek skor kanıtında normalize profilden en az bir somut içerik terimi
-zorunlu tutar: tamamen profile-dışı kanıt reddedilir, profile dayalı açıklama
-kabul edilir. Bu davranış iki karşıt regresyon testiyle korunur.
+İlk evidence-grounding denemesi yalnız profile ait tek bir somut kelimeyi yeterli
+saydığı için "React ve uydurma Kubernetes" gibi karma bir iddia geçebiliyordu.
+Güncel kural, yüksek skor kanıtındaki tüm somut terimleri hem normalize profile
+hem ham PDF kaynak metnine karşı doğrular. Aksan ve tek karakterlik kopya
+sapması kabul edilirken yeni terim ve sayılar reddedilir. Kaynakta bulunmayan
+extraction becerileri profile alınmaz; iki kaynağa dayanmayan skor tüm batch'i
+iptal etmek yerine `0 / Kanıt yok` değerine indirilir. Son `--full` koşusu,
+batch modelinin üç kaynak-dışı kanıtını güvenli düşürüp kalan sonuçla geçerli
+top-3 JSON ürettiğini doğruladı.
 
 ## Bulunan Sorunlar ve Düzeltme Geçmişi
 
@@ -71,11 +79,9 @@ nesnesinin kısıtlı JSON şemasıdır:
 
 - Kriter çıkarımı: ~70 saniye.
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
-- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): dört ölçüm —
-  580s / 463.5s / 476.7s / **852s**. Yani **~8-14 dakika** aralığı; en güncel
-  ve tam uçtan uca koşu (#7, gerçek Telegram) 852s = 14.2 dakikadır.
-  Diğer dokümanlarda tek bir rakam gerekiyorsa **~14 dakika** (en kötü/en
-  güncel ölçüm) kullanılır.
+- 5 CV batch (extraction + evaluation, 2 LLM çağrısı): beş ölçüm —
+  580s / 463.5s / 476.7s / 852s / **1003.8s**. Yani **~8-17 dakika** aralığı;
+  en güncel `--full` çalışma ağacı koşusu 1003.8s = 16.7 dakikadır.
 
 ## OpenAI-Uyumlu Backend (LM Studio) — Uçtan Uca Doğrulama
 
@@ -175,8 +181,8 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 
 ## Bilinen Sınırlamalar
 
-- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~14
-  dakika sürer (ölçüm aralığı 8-14 dk, yukarıya bakın). Darboğaz
+- **Yerel 7B model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–17
+  dakika sürer (yukarıdaki ölçümler). Darboğaz
   model/donanımdır, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler `validate_and_extract_text`
   tarafından "okunabilir metin bulunamadı" hatasıyla reddedilir, OCR ile
