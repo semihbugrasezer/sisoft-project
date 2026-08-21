@@ -134,7 +134,7 @@ Gerçek Telegram + Ollama ile üretilen 5-CV Top-3 çıktısı:
 ## Sınırlamalar
 
 - Görsel-tabanlı PDF'ler için OCR yoktur; okunabilir metin bulunmazsa belge reddedilir.
-- Yerel model hızı donanıma bağlıdır; bu makinede 5-CV koşuları yaklaşık 8–19 dakika sürer.
+- Yerel model hızı donanıma bağlıdır; bu makinede 5-CV koşuları yaklaşık 8–27 dakika sürer.
 - Çok uzun CV metni context güvenliği için kırpılır ve kullanıcı bilgilendirilir.
 - Demo SQLite verisini şifrelemez; gerçek İK verisiyle üretim kullanımı için
   [SECURITY.md](SECURITY.md) içindeki sertleştirmeler gerekir.

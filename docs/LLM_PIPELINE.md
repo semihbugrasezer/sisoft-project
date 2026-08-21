@@ -206,7 +206,9 @@ tek evaluation çağrısında değerlendirmelere çevrilir. Gerekçe ve ölçüm
 
 Model batch evaluation'da bir `documentId`yi atlar veya tekrarlarsa geçerli
 sonuçlar korunur, yalnız sorunlu profiller tekli `EvaluationResult` şemasıyla
-tamamlanır. Tamamlama yine başarısızsa kısmi Top-3 dönmez.
+tamamlanır. Tekli sonuç kriterlerden birini atlar/tekrarlarsa aynı profil için
+bir dar kapsamlı kriter-tamlığı retry'ı çalışır. Tamamlama yine başarısızsa
+kısmi Top-3 dönmez.
 
 PDF doğrulama ve metin çıkarma aşaması bundan bağımsız olarak paraleldir
 (`asyncio.gather`).

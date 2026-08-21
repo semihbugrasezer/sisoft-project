@@ -42,6 +42,8 @@ Ortam: Python 3.14, Apple M2/16 GB, Ollama `qwen2.5:7b`, LM Studio
 `google/gemma-4-e4b`; başlangıç Git commit'i `45faefe` idi. Son hardening
 tekrarı `origin/main` `0162d35` tabanlı çalışma ağacında yapıldı. En güncel
 Ollama `--full` tekrar koşusu `origin/main` `4ddb059` üzerinde çalıştırıldı.
+Profil grounding/tamlık ve evaluation kriter-kümesi düzeltmelerini içeren en
+güncel LM Studio `--full` koşusu Git commit `8f51f3e` üzerinde çalıştırıldı.
 
 | Backend / aşama | Sonuç | Süre / not |
 |---|---|---|
@@ -51,8 +53,8 @@ Ollama `--full` tekrar koşusu `origin/main` `4ddb059` üzerinde çalıştırıl
 | Ollama — son `--full` tekli CV tekrarı | ✅ PASS | 247.9s; çift kaynak kanıt grounding, 3/3 skor, dolu nitel bölümler ve Markdown başlıkları geçti |
 | Ollama — son `--full` 5-CV batch | ✅ PASS | 991.3s; üç kaynak-dışı skor 0'a indirildi; top-3 ortalamaları bağımsız doğrulandı (`90.0 / 55.0 / 55.0`), nihai JSON şeması geçti |
 | LM Studio — ara kriter koşusu (hardening öncesi) | ⚠️ güvenli red | API ve JSON-schema çalıştı; model eksik-terim turunda React'i tekrarladı ve kısmi liste kaydedilmedi |
-| LM Studio — güncel kriter + tekli CV | ✅ PASS | 58.7s kriter (3/3, temiz etiketler) + 151.7s tekli CV; ortak JSON, 3/3 skor, nitel bölümler ve Markdown geçti |
-| LM Studio — güncel 5-CV batch | ✅ PASS | 1086.6s; ilk batch evaluation'da eksik/tekrarlı `documentId=1..4` yalnız ilgili profiller için tekli retry ile tamamlandı. Top-3 ortalamaları (`78.33 / 76.67 / 58.33`) bağımsız doğrulandı ve nihai JSON şeması geçti |
+| LM Studio — güncel kriter + tekli CV | ✅ PASS | 31.0s kriter (3/3) + 231.6s tekli CV; `contact`, `summary`, `skills`, `workExperiences`, `education`, `languages`, 3/3 skor, nitel bölümler ve Markdown geçti |
+| LM Studio — güncel 5-CV batch | ✅ PASS | 1564.2s; eksik/tekrarlı `documentId=0..4` yalnız ilgili profiller için tekli fallback ile tamamlandı. Kaynak-dışı skorlar güvenli biçimde sıfırlandı; Top-3 ortalamaları (`88.33 / 85.0 / 55.0`) bağımsız doğrulandı ve nihai JSON şeması geçti |
 
 Audit sırasında kabul ölçerinin yalnız çekim farklarını tanıyıp PDF'nin açıkça
 izin verdiği anlamsal eşdeğerleri (`tecrübe`/`deneyim`, `temiz kod`/`Clean Code`)
@@ -99,8 +101,8 @@ nesnesinin kısıtlı JSON şemasıdır:
 - Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
 - 5 CV batch (Ollama nominal extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
   580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Ollama aralığı
-  **~8-17 dakika**dır; LM Studio'nun 1086.6s ölçümü dahil toplam gözlenen aralık
-  **~8-19 dakika**dır.
+  **~8-17 dakika**dır; LM Studio'nun 1086.6s ve 1564.2s ölçümleri dahil toplam
+  gözlenen aralık **~8-27 dakika**dır.
 
 ## OpenAI-Uyumlu Backend (LM Studio) — Uçtan Uca Doğrulama
 
@@ -202,7 +204,7 @@ bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 
 ## Bilinen Sınırlamalar
 
-- **Yerel model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–19
+- **Yerel model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–27
   dakika sürer (yukarıdaki ölçümler). Darboğaz
   model/donanımdır, mimari değil.
 - **OCR yok** — taranmış/görsel-yalnızca PDF'ler `validate_and_extract_text`
