@@ -32,6 +32,7 @@ def _appears_in_words(word: str, words: set[str]) -> bool:
 
 
 def _criterion_label_key(label: str) -> frozenset[str]:
+    label = label.replace("_", " ").replace("-", " ")
     meaningful = {
         word for word in re.findall(r"\w+", label.casefold())
         if len(word) >= 3 and word not in _GENERIC_CRITERION_WORDS
@@ -202,9 +203,10 @@ class CriteriaService:
         def is_grounded(criterion: Criterion) -> bool:
             if CriteriaService._is_exact_label_match(criterion.label, normalized_source):
                 return True
+            label = criterion.label.replace("_", " ").replace("-", " ")
             meaningful_words = [
                 word
-                for word in re.findall(r"\w+", criterion.label.casefold())
+                for word in re.findall(r"\w+", label.casefold())
                 if len(word) >= 3
                 and not word.isdigit()
                 and word not in _GENERIC_CRITERION_WORDS

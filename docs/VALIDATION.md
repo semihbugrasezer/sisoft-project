@@ -16,8 +16,9 @@ python -m compileall -q app main.py scripts
 pip check
 ```
 
-Toplam 168 test; PDF doğrulama, beş farklı CV yerleşimi, Pydantic sözleşmeleri,
-dinamik kriter tamlığı, profil/kanıt grounding, tekli ve batch analiz, Top-3
+Toplam 176 test; PDF doğrulama, beş farklı CV yerleşimi, Pydantic sözleşmeleri,
+dinamik kriter tamlığı, exact-source span, semantic evidence verification,
+profil grounding, tekli ve batch analiz, Top-3
 skorlama, SQLite kalıcılığı, Telegram yarışları ve iki LLM adaptörünü kapsar.
 CI aynı kapıları Python 3.13 ve 3.14 matrisinde çalıştırır. Gerçek model koşuları
 deterministik ve hızlı olmadığı için CI'dan ayrı tutulur.
@@ -61,15 +62,37 @@ izin verdiği anlamsal eşdeğerleri (`tecrübe`/`deneyim`, `temiz kod`/`Clean C
 yanlış FAIL saydığı da görüldü. Ölçer bu sınırlı alias'ları tanıyacak şekilde
 düzeltildi; eksik `React` gibi etiketler hâlâ reddedilir.
 
-İlk evidence-grounding denemesi yalnız profile ait tek bir somut kelimeyi yeterli
-saydığı için "React ve uydurma Kubernetes" gibi karma bir iddia geçebiliyordu.
-Güncel kural, yüksek skor kanıtındaki tüm somut terimleri hem normalize profile
-hem ham PDF kaynak metnine karşı doğrular. Aksan ve tek karakterlik kopya
-sapması kabul edilirken yeni terim ve sayılar reddedilir. Kaynakta bulunmayan
-extraction alanları ortak profile alınmaz; iki kaynağa dayanmayan skor tüm batch'i
-iptal etmek yerine `0 / Kanıt yok` değerine indirilir. Son `--full` koşusu,
-batch modelinin üç kaynak-dışı kanıtını güvenli düşürüp kalan sonuçla geçerli
-top-3 JSON ürettiğini doğruladı.
+Eski evidence-grounding yalnız kelimelerin kaynakta bulunmasını denetliyor, kriterle
+semantik bağını garanti etmiyordu. Güncel hat ayrı sorumluluklar kullanır: alıntı
+yalnız exact/whitespace-tolerant kaynak span'ıyla kabul edilir; backend kararlı ID
+üretir; verifier `supports/contradicts/irrelevant` sınıflandırır; evaluator yalnız ID
+seçer. Bilinmeyen, başka kritere ait veya high-score'da support olmayan ID ilgili
+skoru deterministik olarak `0` yapar ve nitel rapor final skorlardan yeniden kurulur.
+
+## 2026-08-22 Criterion-aware Evidence Final Kabulü
+
+Final branch, deploy edilmeden production uygulamasındaki aynı Modal GPU/model sınıfına
+yerel bir Ollama-protokol köprüsüyle bağlanarak `python scripts/validate_assignment.py
+--full` üzerinden sınandı. Kriterler gerçek Telegram cümlesinden çıkarıldı; final koşu
+üç kriteri eksiksiz ve tekrarsız üretti. 5-CV batch 179.6 saniye sürdü ve kabul
+script'indeki bütün structural, evidence ve semantic kontroller `PASS` oldu.
+
+| Aday | React | Temiz kod | Uzaktan | Ortalama |
+|---|---:|---:|---:|---:|
+| Mert Demir | 90 | 95 | 90 | 91.67 |
+| Burak Yıldız | 85 | 90 | 95 | 90.00 |
+| Caner Bulut | 75 | 80 | 85 | 80.00 |
+| Elif Kaya | 20 | 0 | 0 | 6.67 |
+| Zeynep Arslan | 0 | 0 | 0 | 0.00 |
+
+Top-3 sırası `Mert → Burak → Caner` oldu. Elif'in “sınırlı React” alıntısı exact
+source span ile `supports`, “uzaktan çalışma deneyimim yok” alıntısı `contradicts`
+olarak doğrulandı; temiz kod kanıtı üretilmedi. Her 20+ skor aynı kriterin backend
+tarafından üretilmiş verified evidence ID'sine bağlandı. Final dış JSON sözleşmesi,
+bağımsız ortalama hesabı ve sıralama doğrulandı; internal ledger dışarı sızmadı.
+
+Bu koşu Modal deployment'ını değiştirmedi ve botu başlatmadı; yalnız mevcut model
+sınıfını test yüzeyi olarak kullandı.
 
 ## Bulunan Sorunlar ve Düzeltme Geçmişi
 
@@ -98,8 +121,9 @@ CV boyutundan gelmez; kaynağı 5 iç içe `CandidateProfile`/`evaluation`
 nesnesinin kısıtlı JSON şemasıdır:
 
 - Kriter çıkarımı: ~70 saniye.
-- Tekli CV analizi (extraction + evaluation, 2 LLM çağrısı): ~180 saniye.
-- 5 CV batch (Ollama nominal extraction + evaluation, 2 LLM çağrısı): altı ölçüm —
+- Tekli CV analizi için aşağıdaki süreler eski iki-aşamalı hattın tarihsel ölçümüdür.
+- 5 CV batch için aşağıdaki süreler eski iki-aşamalı hattın tarihsel ölçümüdür; güncel
+  üç-aşamalı evidence verifier koşusu ayrıca kaydedilecektir. Altı ölçüm —
   580s / 463.5s / 476.7s / 852s / 1003.8s / **991.3s**. Ollama aralığı
   **~8-17 dakika**dır; LM Studio'nun 1086.6s ve 1564.2s ölçümleri dahil toplam
   gözlenen aralık **~8-27 dakika**dır.

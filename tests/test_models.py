@@ -2,22 +2,45 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.models import (
+    CandidateProfile,
     CriterionScore,
     EvaluationResult,
+    EvidenceQuoteDraft,
     MultiAnalysisResponse,
+    NormalizedCandidateDraft,
     TopCandidate,
 )
 
 
-def test_high_score_without_real_evidence_is_rejected():
-    with pytest.raises(ValidationError, match="kanıtsız yüksek puan"):
-        CriterionScore(
-            criterionId="react",
-            criterionLabel="React tecrübesi",
-            score=95,
-            evidence=["Kanıt yok"],
-            reason="x",
+def test_normalized_candidate_draft_requires_criterion_evidence_from_extractor():
+    with pytest.raises(ValidationError):
+        NormalizedCandidateDraft(
+            profile=CandidateProfile(
+                candidateName="Ada",
+                contact={},
+                summary=None,
+                skills=[],
+                workExperiences=[],
+                education=[],
+                languages=[],
+            )
         )
+
+
+def test_evidence_draft_rejects_unknown_relation():
+    with pytest.raises(ValidationError):
+        EvidenceQuoteDraft(quote="React", relation="maybe")
+
+
+def test_high_score_without_evidence_can_be_parsed_for_application_fail_closed():
+    score = CriterionScore(
+        criterionId="react",
+        criterionLabel="React tecrübesi",
+        score=95,
+        evidenceIds=[],
+        reason="x",
+    )
+    assert score.evidenceIds == []
 
 
 def test_low_score_without_evidence_is_allowed():
@@ -25,7 +48,7 @@ def test_low_score_without_evidence_is_allowed():
         criterionId="react",
         criterionLabel="React tecrübesi",
         score=10,
-        evidence=["Kanıt yok"],
+        evidenceIds=[],
         reason="Profilde React'e dair bilgi yok",
     )
     assert score.score == 10
@@ -36,7 +59,7 @@ def test_high_score_with_real_evidence_is_allowed():
         criterionId="react",
         criterionLabel="React tecrübesi",
         score=90,
-        evidence=["5 yıl React ile üretim projesi geliştirdi"],
+        evidenceIds=["d0:react:0"],
         reason="Güçlü ve tekrarlanan kanıt",
     )
     assert score.score == 90
@@ -48,7 +71,7 @@ def test_criterion_score_rejects_unknown_fields():
             criterionId="react",
             criterionLabel="React tecrübesi",
             score=50,
-            evidence=["orta düzey deneyim"],
+            evidenceIds=["d0:react:0"],
             reason="x",
             confidence=0.8,  # şemada olmayan alan
         )
@@ -114,7 +137,7 @@ def _evaluation_kwargs(**overrides):
         scores=[
             CriterionScore(
                 criterionId="react", criterionLabel="React", score=80,
-                evidence=["5 yıl React"], reason="x",
+                evidenceIds=["d0:react:0"], reason="x",
             )
         ],
         strengths=["güçlü yön"],

@@ -51,6 +51,19 @@ EXPECTED_CRITERIA = [
     "uzaktan çalışma uyumu",
 ]
 
+EXPECTED_POSITIVE_CRITERIA = {
+    "cv_burak_yildiz.pdf": set(EXPECTED_CRITERIA),
+    "cv_caner_bulut.pdf": set(EXPECTED_CRITERIA),
+    "cv_elif_kaya.pdf": {"React tecrübesi"},
+    "cv_mert_demir.pdf": set(EXPECTED_CRITERIA),
+    "cv_zeynep_arslan.pdf": set(),
+}
+EXPECTED_TOP_FILES = {
+    "cv_burak_yildiz.pdf",
+    "cv_caner_bulut.pdf",
+    "cv_mert_demir.pdf",
+}
+
 # PDF etiketlerin kelimesi kelimesine korunmasını istemiyor; kendi örneğinde
 # "temiz kod yazımı" için "Clean Code" kullanıyor. Kabul ölçeri eksik "React"
 # gibi etiketleri reddetmeye devam ederken bu açık anlamsal eşdeğerleri tanır.
@@ -112,6 +125,15 @@ async def run(full: bool) -> int:
     config = load_config()
     container = build_container(config)
     report = Report()
+    verified_runs = []
+    verify_candidates = container.cv_service._verify_candidates
+
+    async def capture_verified(candidates, active_criteria):
+        verified = await verify_candidates(candidates, active_criteria)
+        verified_runs.append(verified)
+        return verified
+
+    container.cv_service._verify_candidates = capture_verified
 
     print(f"\nBackend : {config.llm_backend}")
     print(f"Model   : {config.llm_model}")
@@ -153,8 +175,9 @@ async def run(full: bool) -> int:
 
         print("\n2) Tekli CV: doğrulama → LLM Extraction → değerlendirme")
         t0 = time.monotonic()
-        profile, evaluation, _ = await container.cv_service.analyze(
-            cv_paths[0].read_bytes(), criteria
+        source_text, _ = await container.cv_service.extract_text(cv_paths[0].read_bytes())
+        profile, evaluation = await container.cv_service.analyze_from_text(
+            source_text, criteria
         )
         elapsed = time.monotonic() - t0
         report.check(True, "Tekli CV analizi tamamlandı", f"{elapsed:.1f}s")
@@ -183,6 +206,9 @@ async def run(full: bool) -> int:
             len(evaluation.scores) == len(criteria),
             f"Her kritere puan verildi: {len(evaluation.scores)}/{len(criteria)}",
             f"{scored}",
+        )
+        _verify_evidence_pipeline(
+            verified_runs[-1][0], evaluation, criteria, report, prefix="Tekli: "
         )
         # PDF §2 raporda güçlü yönler, zayıf yönler VE gelişim tavsiyeleri istiyor.
         # Hangi alanın boş kaldığını göstermek önemli: bu bir kod hatası değil,
@@ -226,12 +252,43 @@ async def run(full: bool) -> int:
             files = [(p.name, p.read_bytes()) for p in cv_paths[:MAX_CV_COUNT]]
             report.check(len(files) == MAX_CV_COUNT, f"Batch CV sayısı = {MAX_CV_COUNT}")
             print(f"\n3) Çoklu CV batch ({len(files)} CV) — birkaç dakika sürebilir")
+            captured = {}
+            analyze_batch = container.cv_service.analyze_batch_from_texts
+
+            async def capture_analyses(texts, active_criteria):
+                analyses = await analyze_batch(texts, active_criteria)
+                captured["texts"] = texts
+                captured["analyses"] = analyses
+                return analyses
+
+            container.cv_service.analyze_batch_from_texts = capture_analyses
             t0 = time.monotonic()
-            response, _ = await container.batch_service.analyze_batch(files, criteria)
+            try:
+                response, _ = await container.batch_service.analyze_batch(files, criteria)
+            finally:
+                container.cv_service.analyze_batch_from_texts = analyze_batch
             elapsed = time.monotonic() - t0
             report.check(True, "Batch analizi tamamlandı", f"{elapsed:.1f}s")
 
+            verified_batch = verified_runs[-1]
+            for (filename, _), candidate, analysis in zip(
+                files, verified_batch, captured["analyses"], strict=True
+            ):
+                _, candidate_evaluation = analysis
+                _verify_evidence_pipeline(
+                    candidate,
+                    candidate_evaluation,
+                    criteria,
+                    report,
+                    prefix=f"{filename}: ",
+                )
+
             _verify_response(response, files, criteria, report)
+            _verify_semantic_fixture(
+                response, files, captured["analyses"], criteria, report
+            )
+            print("\n5) Nihai Telegram JSON")
+            print(response.model_dump_json(indent=2), flush=True)
 
         print()
         if report.failures:
@@ -310,6 +367,87 @@ def _verify_response(response: MultiAnalysisResponse, files, criteria, report: R
         report.check(True, "Nihai JSON şemayı doğruluyor")
     except Exception as exc:  # pragma: no cover - kabul testi yolu
         report.check(False, "Nihai JSON şemayı doğruluyor", str(exc))
+
+
+def _verify_evidence_pipeline(
+    candidate, evaluation, criteria, report: Report, prefix: str = ""
+) -> None:
+    """Doğrulanmış ledger'ı ve her yüksek skorun kullandığı ID'yi gösterir."""
+    criteria_by_id = {criterion.id: criterion for criterion in criteria}
+    evidence_by_id = {
+        item.criterionId: item.items for item in candidate.criterionEvidence
+    }
+    report.check(
+        set(evidence_by_id) == set(criteria_by_id),
+        prefix + "Normalize JSON her dinamik kriter için verified ledger içeriyor",
+    )
+
+    ledger_valid = True
+    scores_valid = True
+    scores_by_id = {score.criterionId: score for score in evaluation.scores}
+    for criterion_id in criteria_by_id:
+        evidence = evidence_by_id.get(criterion_id, [])
+        score = scores_by_id.get(criterion_id)
+        ledger_valid = ledger_valid and all(
+            item.end > item.start and item.quote
+            for item in evidence
+        )
+        support_ids = {
+            item.evidenceId for item in evidence if item.relation == "supports"
+        }
+        if score is not None and score.score >= 20:
+            scores_valid = scores_valid and bool(set(score.evidenceIds) & support_ids)
+        print(
+            f"      {criterion_id}: verified="
+            f"{[(item.evidenceId, item.relation, item.quote) for item in evidence]}; "
+            f"score={score.score if score else 'eksik'}; "
+            f"evidenceIds={score.evidenceIds if score else []}",
+            flush=True,
+        )
+
+    report.check(
+        ledger_valid, prefix + "criterionEvidence source span'ları doğrulanmış"
+    )
+    report.check(
+        scores_valid,
+        prefix + "20+ skorlar aynı kriterin doğrulanmış quote'una dayanıyor",
+    )
+
+
+def _verify_semantic_fixture(response, files, analyses, criteria, report: Report) -> None:
+    """Beş mock CV'nin kaynakta açıkça yazan pozitif/negatif sinyallerini doğrular."""
+    criterion_ids = {}
+    for expected in EXPECTED_CRITERIA:
+        criterion = next(
+            (
+                criterion
+                for criterion in criteria
+                if _matches(expected, [criterion.label])
+            ),
+            None,
+        )
+        if criterion is None:
+            report.check(False, f"Semantic fixture kriteri mevcut: {expected}")
+            return
+        criterion_ids[expected] = criterion.id
+    semantics_ok = True
+    for (filename, _), (_, evaluation) in zip(files, analyses, strict=True):
+        scores_by_id = {score.criterionId: score.score for score in evaluation.scores}
+        expected_positive = EXPECTED_POSITIVE_CRITERIA[filename]
+        semantics_ok = semantics_ok and all(
+            (scores_by_id[criterion_id] >= 20) == (label in expected_positive)
+            for label, criterion_id in criterion_ids.items()
+        )
+    report.check(
+        semantics_ok,
+        "5-CV semantic fixture pozitif/negatif kriter sinyalleriyle eşleşiyor",
+    )
+    report.check(
+        {candidate.pdfFileName for candidate in response.topCandidates}
+        == EXPECTED_TOP_FILES,
+        "Semantic olarak güçlü üç aday Top-3'e girdi",
+        str([candidate.pdfFileName for candidate in response.topCandidates]),
+    )
 
 
 def main() -> int:

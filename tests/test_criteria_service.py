@@ -232,6 +232,36 @@ async def test_intent_and_extractor_semantic_duplicate_is_saved_once():
 
 
 @pytest.mark.asyncio
+async def test_malformed_slug_duplicate_is_not_saved_as_a_fourth_criterion():
+    class SlugDuplicateLLM:
+        async def structured_chat(
+            self, system, user, response_model, temperature=0.0, model=None
+        ):
+            expected = [
+                Criterion(id="react", label="React tecrübesi", description="x"),
+                Criterion(id="clean", label="temiz kod yazımı", description="x"),
+                Criterion(id="remote", label="uzaktan çalışma uyumu", description="x"),
+            ]
+            if response_model is CriteriaIntentResult:
+                return CriteriaIntentResult(intent="criteria", criteria=expected)
+            return CriteriaExtractionResult(criteria=[
+                *expected,
+                Criterion(
+                    id="react_typo",
+                    label="react_tecrbesi",
+                    description="React deneyimi",
+                ),
+            ])
+
+    criteria = await CriteriaService(SlugDuplicateLLM(), FakeRepo()).define_if_requested(
+        1,
+        "React tecrübesi, temiz kod yazımı ve uzaktan çalışma uyumuna göre skorla",
+    )
+
+    assert [criterion.id for criterion in criteria] == ["react", "clean", "remote"]
+
+
+@pytest.mark.asyncio
 async def test_partial_extraction_retries_and_combines_grounded_criteria():
     class PartialThenMissingLLM:
         def __init__(self):

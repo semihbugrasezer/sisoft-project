@@ -13,7 +13,7 @@ ardından ortak `CandidateProfile` JSON şemasına çıkarılır; tekli analiz M
 - SQLite geçmişi ve rolling summary ile bağlamlı günlük sohbet
 - Komut zorunluluğu olmadan serbest metinden dinamik değerlendirme kriterleri
 - Bozuk, şifreli, sayfasız ve metinsiz PDF'leri LLM'den önce reddetme
-- Tüm CV alanlarını kaynak metne dayandıran structured extraction
+- Exact-source span, semantic verifier ve backend-owned ID içeren criterion evidence ledger
 - Güçlü/zayıf yönler ve gelişim tavsiyeleri içeren tekli Markdown raporu
 - En fazla 5 CV için backend'de deterministik ortalama ve Top-3 JSON
 - Telegram update'lerini bloklamayan async I/O ve paralel PDF doğrulama
@@ -36,8 +36,10 @@ flowchart LR
     PORT --> C[LM Studio / vLLM]
 ```
 
-Ham PDF evaluator'a verilmez. Puanlama normalize profil üzerinden yürür;
-kanıt grounding'i, ortalama ve sıralama backend'de deterministik uygulanır.
+Ham PDF evaluator'a veya final skor guard'ına verilmez. Criterion-aware extraction
+alıntı taslaklarını ortak JSON'a taşır; Python kaynak span'ını ve evidence ID'yi
+üretir, tek batch verifier ilişkiyi sınıflandırır. Evaluator yalnız doğrulanmış ID'leri
+seçebilir. Ortalama ve sıralama backend'de deterministik uygulanır.
 Katmanlar, async çalışma modeli ve karar gerekçeleri için
 [Mimari](docs/ARCHITECTURE.md) belgesine bakın.
 

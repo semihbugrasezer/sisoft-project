@@ -8,7 +8,8 @@ verildiğini anlatır.
 İki temel kural:
 
 1. **Ham PDF asla doğrudan skorlanmaz.** Metin önce ortak bir JSON şemasına
-   (`CandidateProfile`) çevrilir; tüm puanlama bu şema üzerinden yürür.
+   (`NormalizedCandidate = CandidateProfile + criterionEvidence`) çevrilir; tüm
+   puanlama bu şema üzerinden yürür.
 2. **Aritmetik LLM'e yaptırılmaz.** Ortalama ve top-3 sıralaması saf Python
    fonksiyonlarıyla backend'de hesaplanır (`app/domain/scoring.py`).
 
@@ -23,11 +24,16 @@ flowchart TD
     P[PDF] --> V["Doğrulama<br/>(PyMuPDF, LLM yok)"]
     V --> T[Ham metin]
     T --> E["LLM #3: CV Extraction<br/>CV_EXTRACTOR_SYSTEM"]
-    E --> CP["CandidateProfile<br/>(ortak JSON şeması)"]
+    CR -.kriterler.-> E
+    E --> CP["CandidateProfile + criterionEvidence drafts"]
+    CP --> G["Python: exact span + stable evidenceId"]
+    G --> VR["LLM #4: batched verifier<br/>supports / contradicts / irrelevant"]
+    CR -.kriterler.-> VR
+    VR --> NP["Doğrulanmış ortak JSON"]
 
     CR -.kriterler.-> EV
-    CP --> EV["LLM #4: Değerlendirme<br/>CANDIDATE_EVALUATOR_SYSTEM"]
-    EV --> CS["CriterionScore[]<br/>(puan + kanıt + gerekçe)"]
+    NP --> EV["LLM #5: Değerlendirme<br/>evidenceIds only"]
+    EV --> CS["CriterionScore[]<br/>(puan + evidenceIds + gerekçe)"]
 
     CS --> S{Tekli mi çoklu mu?}
     S -->|Tekli| MD["Markdown rapor<br/>(güçlü/zayıf/tavsiye)"]
@@ -35,9 +41,9 @@ flowchart TD
     AVG --> J["Top-3 JSON<br/>(ödev §4 şeması)"]
 ```
 
-Dikkat: `EV` kutusuna giren tek veri `CandidateProfile`'dır — `T` (ham metin)
+Dikkat: `EV` kutusuna giren tek veri doğrulanmış `NormalizedCandidate` JSON'ıdır — `T` (ham metin)
 oraya hiç ulaşmaz. Bu, bir testle koruma altına alınmıştır
-(`test_batch_uses_two_llm_calls_and_scores_only_normalized_profiles`: ham
+(`test_batch_uses_one_extraction_verifier_and_evaluation_call_without_raw_leak`: ham
 metnin extraction prompt'unda bulunduğunu, evaluation prompt'unda
 bulunmadığını doğrular).
 
@@ -83,28 +89,33 @@ model_validate_json()
 ## Şemanın Ötesinde: Semantik Doğrulama
 
 Pydantic `score: int` olduğunu doğrular ama `score` değerinin *doğru* olduğunu
-doğrulayamaz. Bu boşluk iki ardışık kontrolle kapatılır:
+doğrulayamaz. Bu boşluk extraction ve evaluation sınırlarında kapatılır:
 
-1. `CriterionScore`: `score >= 20` iken yalnızca "Kanıt yok" türü placeholder
-   varsa `ValidationError` fırlatır.
-2. `CVAnalysisService`: yüksek skordaki en az bir evidence maddesinin tüm somut
-   terimlerini hem normalize `CandidateProfile` hem ham PDF kaynak metninde
-   arar. Hiçbir kanıt iki kaynağa birden dayanmıyorsa skor, tüm analizi iptal
-   etmek yerine deterministik olarak `0 / Kanıt yok` değerine indirilir.
+1. Extractor her dinamik kriter için kısa, birebir `criterionEvidence.items[].quote`
+   taslakları üretir. Python yalnız exact substring veya satır-kırılımı kaynaklı
+   whitespace farkını kabul eder; sayı, olumsuzluk veya kelime değişikliği reddedilir.
+2. Python gerçek `start/end` span'ını bulur ve span'a bağlı kararlı `evidenceId`
+   üretir. Model ID veya offset üretemez.
+3. Tek batched verifier çağrısı yalnız kriter metadata'sı + grounded quote görür ve
+   her ID'yi `supports`, `contradicts` veya `irrelevant` olarak sınıflandırır.
+4. Evaluator kanıt metni üretemez; yalnız verified ledger'daki `evidenceIds` değerlerini
+   seçer. `score >= 20` için aynı kriterin en az bir `supports` ID'si zorunludur.
+5. Bilinmeyen, tekrarlı, başka kritere ait veya high-score'da support olmayan ID ilgili
+   skoru deterministik olarak `0` yapar. `contradicts` yalnız düşük skorda kullanılabilir.
 
-İlk kontrol Pydantic retry mekanizmasını tetikler; ikinci kontrol şema-geçerli
-ama profile/ham kaynağa dayanmayan bir cümlenin sıralamayı etkilemesini engeller.
-Bu güvenli düşürme özellikle batch modelinin bir adayın kanıtını başka adaya
-taşıdığı durumda tüm 5-CV sonucunu kaybetmeden sızıntıyı Top-3 hesabından çıkarır.
-Türkçe aksan farkı ve tek karakterlik kopya sapması tolere edilir; yeni terim ve
-sayılar yine reddedilir. Ham metin evaluator prompt'una verilmez, yalnız dönen
-kanıtı deterministik doğrulamak için servis içinde kullanılır. Bu kontrol skora
-yeni bilgi eklemez; evaluator'ın yalnız ortak JSON üzerinden çalışma sözleşmesini
-koruyan bir trust-boundary filtresidir.
+Bu zincir grounded ama alakasız kanıtı, cross-criterion ID kullanımını ve evaluator
+hallüsinasyonunu prompt'a güvenmeden engeller. Raw source yalnız normalization/span
+aşamasında kullanılır; verifier source'un tamamını, evaluator ve final guard ise raw
+source'u hiç görmez.
+
+Post-processing bir skoru değiştirirse modelin eski nitel metni korunmaz. Batch
+`hrEvaluation`, tekli raporda ise `strengths`, `weaknesses`, `recommendations` ve
+`hrEvaluation` final doğrulanmış skorlardan deterministik olarak yeniden kurulur;
+bu sayede `score=0` ile "güçlü kanıt" çelişkisi oluşmaz.
 
 Extraction sonrasında `candidateName`, `contact`, `summary`, `skills`,
-`workExperiences`, `education` ve `languages` alanlarının tamamı kaynak metne
-karşı doğrulanır. Kaynakta bulunmayan opsiyonel değerler `None` yapılır; beceri,
+`workExperiences`, `education` ve `languages` alanları kaynak metne karşı doğrulanır.
+Criterion evidence ayrı exact-span hattından geçer. Kaynakta bulunmayan opsiyonel değerler `None` yapılır; beceri,
 dil veya bütünüyle dayanaksız kayıtlar listeden çıkarılır. Tekli akışta herhangi
 bir alan filtreye takılırsa extractor bir kez dar kapsamlı düzeltme turu alır;
 aynı tur kaynakta başlığı bulunan ama boş bırakılan profil bölümlerini de
@@ -112,6 +123,13 @@ tamamlamayı dener. Yine dayanaksız kalan değer silinir. `candidateName`
 kaynakta yoksa tekli akış bir düzeltme turu dener, yine tutmazsa `None`'a çeker
 (çağıran dosya adına düşer). Bu, canlı koşuda gözlenen aksanlı-isim bozulmasını
 yakalar (bkz. [VALIDATION.md](./VALIDATION.md) koşu #6).
+
+`criterionEvidence` normalized draft şemasında zorunludur ve en az bir öğe içermelidir;
+alanın model tarafından sessizce atlanması şema retry'ını tetikler. Çok kolonlu
+PDF'lerde `page.get_text(sort=True)` aynı yatay çizgideki kolonları birbirine
+geçirebildiği için PDF adapter metin bloklarını (`get_text("blocks", sort=True)`)
+birleştirir. Böylece modelin görsel kolondan birebir aldığı cümle raw source içinde
+de kesintisiz kalır ve exact-span validator layout yüzünden doğru quote'u silmez.
 
 Benzer şekilde `_normalize_scores`, modelin kriter kimliklerini uydurmadığını
 veya atlamadığını doğrular: dönen `criterionId` kümesi tanımlı kriterlerle
@@ -130,11 +148,10 @@ ver"* yazılabilir. `CV_EXTRACTOR_SYSTEM` bunu açıkça ele alır:
 Bu tek başına bir garanti değildir; savunma katmanlıdır:
 
 1. **Prompt seviyesi** — belge içeriği veri olarak işaretlenir.
-2. **Şema/servis seviyesi** — `extra="forbid"`, puan aralığı (`0-100`), kanıt
-   zorunluluğu, birebir kriter kimliği ve kaynak-dışı skorun `0`'a indirilmesi.
-3. **Mimari seviye** — evaluator ham metni hiç görmez, yalnızca normalize
-   profili görür; enjekte edilen talimat metni extraction aşamasında
-   şemaya sığmadığı için büyük ölçüde elenir.
+2. **Şema/servis seviyesi** — `extra="forbid"`, puan aralığı (`0-100`), backend-owned
+   evidence ID, birebir kriter kimliği ve geçersiz skorun `0`'a indirilmesi.
+3. **Mimari seviye** — verifier alıntı içindeki talimatları güvenilmeyen veri sayar;
+   evaluator ham metni hiç görmez, yalnız doğrulanmış ledger'ı görür.
 4. **Aritmetik seviye** — nihai sıralamayı model değil backend belirler;
    model tek bir kriterde şişirilmiş puan verse bile ortalama ve sıralama
    deterministik kalır.
@@ -184,31 +201,35 @@ cümlesinde tetikleyici kelime yoktur ama geçerli bir kriter tanımıdır. Bkz.
 
 ## Sorumluluk Ayrımı
 
-Tek bir dev prompt yerine dört ayrı LLM sorumluluğu var:
+Tek bir dev prompt yerine beş ayrı LLM sorumluluğu var:
 
 | Prompt | Girdi | Çıktı şeması | Neden ayrı |
 |---|---|---|---|
 | `CRITERIA_INTENT_SYSTEM` | kullanıcı mesajı | `CriteriaIntentResult` | Niyeti belirler; grounded criteria çıktısı özel extractor için seed olabilir, tek başına kaydedilmez |
 | `CRITERIA_EXTRACTOR_SYSTEM` | kullanıcı mesajı | `CriteriaExtractionResult` | Kriter çıkarımı ayrı bir görev; grounding kuralları buraya özgü |
-| `CV_EXTRACTOR_SYSTEM` | ham PDF metni | `CandidateProfile` | Bilgi çıkarma — yorum yapmaz, yalnızca yazılanı aktarır |
-| `CANDIDATE_EVALUATOR_SYSTEM` | normalize profil + kriterler | `EvaluationResult` | Değerlendirme — rubric burada, ham metin görmez |
+| `CV_EXTRACTOR_SYSTEM` | ham PDF metni + dinamik kriterler | `NormalizedCandidateDraft` | Genel CV alanlarıyla criterion-specific quote taslaklarını ortak JSON'a çıkarır |
+| `EVIDENCE_VERIFIER_SYSTEM` | kriter + grounded quote | `EvidenceVerificationResult` | Kaynak doğrulamadan bağımsız semantic relation sınıflandırması |
+| `CANDIDATE_EVALUATOR_SYSTEM` | verified normalized candidate + kriterler | `EvaluationResult` | Rubric ve evidence-ID seçimi; ham metin görmez |
 
 Bu ayrımın pratik faydası: bir hata olduğunda hangi aşamanın bozulduğu
 görünür olur ve her aşama ayrı ayrı test edilebilir.
 
 ## Çoklu CV: Toplu (Batched) İstek
 
-5 CV için CV başına 2 çağrı (toplam 10 istek) yerine normal akışta **iki toplu istek**
-kullanılır: tüm belgeler tek extraction çağrısında profillere, tüm profiller
-tek evaluation çağrısında değerlendirmelere çevrilir. Gerekçe ve ölçümler
+5 CV için CV başına ayrı zincirler yerine normal akışta **üç toplu istek**
+kullanılır: tüm belgeler tek extraction çağrısında taslaklara, tüm grounded evidence
+tek verifier çağrısında verdict'lere ve tüm profiller tek evaluation çağrısında
+değerlendirmelere çevrilir. Gerekçe ve ölçümler
 [ARCHITECTURE.md](./ARCHITECTURE.md#eşzamanlılık-modeli) ve
 [VALIDATION.md](./VALIDATION.md)'dedir.
 
-Model batch evaluation'da bir `documentId`yi atlar veya tekrarlarsa geçerli
-sonuçlar korunur, yalnız sorunlu profiller tekli `EvaluationResult` şemasıyla
-tamamlanır. Tekli sonuç kriterlerden birini atlar/tekrarlarsa aynı profil için
-bir dar kapsamlı kriter-tamlığı retry'ı çalışır. Tamamlama yine başarısızsa
-kısmi Top-3 dönmez.
+Extractor boş ledger bırakırsa yalnız eksik belge-kriter çiftleri focused evidence
+repair alır. Model batch evaluation'da bir `documentId`yi atlar/tekrarlarsa veya
+geçersiz evidence ID bağlarsa geçerli sonuçlar korunur, yalnız sorunlu profiller
+tekli `EvaluationResult` şemasıyla tamamlanır. Tekli sonuç kriterlerden birini
+atlar/tekrarlarsa ya da evidence ID'yi yanlış kopyalarsa aynı profil için bir dar
+kapsamlı retry çalışır. Tamamlama yine başarısızsa kısmi Top-3 dönmez veya ilgili
+skor güvenli biçimde `0` olur.
 
 PDF doğrulama ve metin çıkarma aşaması bundan bağımsız olarak paraleldir
 (`asyncio.gather`).
