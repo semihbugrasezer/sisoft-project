@@ -202,6 +202,61 @@ olmamasına rağmen, üçüncü mesajda doğru hatırladı. Aynı davranış ayr
 Telegram üzerinden ikinci kez, kullanıcının kendi adı ve React/frontend
 bağlamıyla doğrulandı ("adımı hatırlıyor musun" → doğru yanıt).
 
+
+## Koşu #9 — Context Window Yapılandırma Hatası (Modal L4, 2026-08-22)
+
+Bot Modal'da L4 GPU üzerinde `qwen2.5:7b` ile ayağa kaldırılıp, repo dışında
+üretilmiş beş farklı şablonlu CV (tablo düzeni, iki sütun, düz akış metni,
+İngilizce, yoğun madde işaretli) ile kabul testine sokuldu. Aynı beş CV'nin
+sıralaması koşudan koşuya tutarsız çıktı ve bir koşuda `cv_nehir_avci.pdf`
+adayı "DENİZ AKSOY" adıyla raporlandı.
+
+**Teşhis.** Model kalitesi sanılan davranış ölçülünce yapılandırma hatası çıktı.
+`OllamaClient._post_chat()` isteğe yalnız `temperature` gönderiyordu; `num_ctx`
+hiç gönderilmediği için Ollama kendi varsayılanına (tipik 4096 token) düşüyordu.
+Oysa batch akışı TÜM belgeleri tek extraction prompt'una koyar ve toplam metin
+bütçesi (`MAX_BATCH_EXTRACTED_CHARS = 60_000`) yorumunda görüldüğü gibi ~32k
+token context varsayımıyla hesaplanmıştır. Tasarımın varsayımı adapter tarafından
+runtime'a hiç aktarılmıyordu.
+
+Aynı beş belgelik `DOCUMENTS` payload'u `temperature=0.0` ile iki ayarda
+çalıştırıldı ve Ollama'nın kendi token sayaçları okundu:
+
+| Ayar | `prompt_eval_count` | `eval_count` | Toplam | doc4 (`cv_nehir_avci.pdf`) |
+|---|---:|---:|---:|---|
+| `num_ctx` gönderilmiyor (4096) | 2100 | 2765 | **4865 > 4096** | ad="DENİZ AKSOY", 11 skill — doc0'ın birebir kopyası |
+| `num_ctx=32768` | 2100 | 2592 | 4692 | ad="NEHİR AVCI", kendi 8 skill'i |
+
+**Prompt kırpılmıyor** — girdi 2100 token ile 4096'ya rahat sığıyor. Pencere
+ÜRETİM sırasında doluyor: model beşinci profili yazarken son belgenin kaynağı
+pencereden kayıyor ve elinde kalan en eski belgeyi tekrarlıyor. Bozulanın hep
+*son* belge olması bu mekanizmanın imzasıdır.
+
+Uçtan uca etkisi sıralamanın bozulmasıydı; yalnız context ayarı düzeltilerek
+(grounding'e dokunmadan) yapılan koşuda doğru üç aday Top-3'e girdi ve
+belgeler arası karışma ortadan kalktı.
+
+**Düzeltme.** Context penceresi `LLM_CONTEXT_LENGTH` ile konfigüre edilebilir
+hâle geldi (varsayılan 32768; `qwen2.5:7b` 32k destekler) ve `.env → config.py →
+container.py → OllamaClient → options.num_ctx` zinciriyle taşınıyor. Ayrıca
+`prompt_eval_count + eval_count` pencereyi doldurursa uyarı loglanıyor — taşma
+bir daha sessiz kalmıyor, tahmin edilmek yerine ölçülüyor.
+
+**Kalıntı sınırlamalar (bu düzeltmenin kapsamı dışında).**
+
+- Normalize şema, dinamik bir kriterin ihtiyaç duyduğu her kaynak gerçeğini
+  taşımayı garanti etmiyor. Örneğin "uzaktan çalışma uyumu" kriterinde, kaynakta
+  açıkça yazan çalışma düzeni bilgisi `summary`/`description` alanlarına
+  girmezse normalize JSON'a hiç ulaşmıyor ve evaluator onu göremiyor. Kriterler
+  sabit olmadığı için bu yalnız "remote" alanına özgü bir boşluk değildir.
+- Kaynak-doğrulama (grounding) kanıtın **kaynağa dayandığını** doğrular,
+  **kriterle ilgili olduğunu** değil. Kaynakta gerçek ama kriterle alakasız bir
+  kanıt yüksek puanı taşıyabilir.
+
+Bu iki sınırlama koşu #9'da gözlendi, bilinçli olarak ayrı ele alınıyor: ikisi
+de grounding eşiğiyle değil, normalize şemanın kapsamı ve evaluator'ın kanıt
+seçimiyle ilgilidir.
+
 ## Bilinen Sınırlamalar
 
 - **Yerel model gecikmesi** — 5 CV'lik batch analizi bu donanımda ~8–27
