@@ -26,6 +26,11 @@ class Criterion(BaseModel):
             raise ValueError("Kriter kimliği ve etiketi boş olamaz.")
         return value
 
+    @field_validator("label")
+    @classmethod
+    def humanize_label(cls, value: str) -> str:
+        return " ".join(value.replace("_", " ").split())
+
 
 class CriteriaExtractionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")

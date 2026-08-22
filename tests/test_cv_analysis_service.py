@@ -243,7 +243,7 @@ async def test_grounded_but_irrelevant_evidence_fails_closed_and_rebuilds_report
     assert result.scores[0].score == 0
     assert result.scores[0].evidenceIds == []
     assert result.hrEvaluation == (
-        "Doğrulanmış kriter skorları: uzaktan_calisma_uyumu 0/100."
+        "Doğrulanmış kriter skorları: uzaktan calisma uyumu 0/100."
     )
     assert result.strengths == [
         "Doğrulanmış kriter skorlarına göre güçlü yön tespit edilmedi."

@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from app.domain.models import (
     CandidateProfile,
+    Criterion,
     CriterionScore,
     EvaluationResult,
     EvidenceQuoteDraft,
@@ -10,6 +11,17 @@ from app.domain.models import (
     NormalizedCandidateDraft,
     TopCandidate,
 )
+
+
+def test_criterion_label_is_human_readable_not_a_slug():
+    criterion = Criterion(
+        id="uzaktan_calisma_uyumu",
+        label="uzaktan_calisma_uyumu",
+        description="x",
+    )
+
+    assert criterion.id == "uzaktan_calisma_uyumu"
+    assert criterion.label == "uzaktan calisma uyumu"
 
 
 def test_normalized_candidate_draft_requires_criterion_evidence_from_extractor():
