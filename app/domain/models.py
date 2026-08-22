@@ -92,6 +92,27 @@ class Language(BaseModel):
     level: str | None = None
 
 
+class EvidenceQuoteDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quote: str = Field(min_length=3, max_length=320)
+
+
+class CriterionEvidenceDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criterionId: str
+    items: list[EvidenceQuoteDraft] = Field(default_factory=list, max_length=3)
+
+    @field_validator("criterionId")
+    @classmethod
+    def strip_criterion_id(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("criterionId boş olamaz.")
+        return value
+
+
 class CandidateProfile(BaseModel):
     """PDF'in ortak profil şemasıyla birebir. `extra="forbid"`: LLM extraction'ın
     şema dışına taşmadığını (uydurma alan üretmediğini) garanti eder
@@ -108,11 +129,71 @@ class CandidateProfile(BaseModel):
     languages: list[Language]
 
 
+class NormalizedCandidateDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: CandidateProfile
+    criterionEvidence: list[CriterionEvidenceDraft] = Field(min_length=1)
+
+
+class EvidenceExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criterionEvidence: list[CriterionEvidenceDraft] = Field(min_length=1)
+
+
+class EvidenceRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidenceId: str
+    quote: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def end_follows_start(self):
+        if self.end <= self.start:
+            raise ValueError("Evidence end değeri start değerinden büyük olmalıdır.")
+        return self
+
+
+class GroundedCriterionEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criterionId: str
+    items: list[EvidenceRecord] = Field(default_factory=list, max_length=3)
+
+
+class GroundedCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: CandidateProfile
+    criterionEvidence: list[GroundedCriterionEvidence] = Field(min_length=1)
+
+
+class VerifiedEvidence(EvidenceRecord):
+    relation: Literal["supports", "contradicts"]
+
+
+class CriterionEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criterionId: str
+    items: list[VerifiedEvidence] = Field(default_factory=list, max_length=3)
+
+
+class NormalizedCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: CandidateProfile
+    criterionEvidence: list[CriterionEvidence] = Field(min_length=1)
+
+
 class BatchProfileItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     documentId: int
-    profile: CandidateProfile
+    candidate: NormalizedCandidateDraft
 
 
 class BatchProfileResult(BaseModel):
@@ -123,14 +204,17 @@ class BatchProfileResult(BaseModel):
 
 # --- Değerlendirme (CandidateEvaluator çıktısı) -------------------------
 
-# Prompt "kanıt yoksa evidence'a tek eleman olarak 'Kanıt yok' yaz, düşük puan ver"
-# diyor (CANDIDATE_EVALUATOR_SYSTEM) ama bu yalnızca prompt seviyesinde bir kural —
-# model_config alanları ve Field(min_length=1) tek başına "score=95, evidence=['Kanıt
-# yok']" gibi teknik olarak şemaya uyan ama semantik olarak tutarsız bir çıktıyı
-# engellemez. Aşağıdaki validator bunu reddeder; ValidationError, OllamaClient.
-# structured_chat'in zaten sahip olduğu tek-seferlik şema-düzeltme retry'ını tetikler
-# (ayrı bir retry mekanizması eklemeye gerek yok).
-_NO_EVIDENCE_MARKERS = {"kanıt yok", "kanit yok", "no evidence", "yok", "-"}
+class EvidenceVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidenceId: str
+    verdict: Literal["supports", "contradicts", "irrelevant"]
+
+
+class EvidenceVerificationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdicts: list[EvidenceVerdict]
 
 
 class CriterionScore(BaseModel):
@@ -139,23 +223,8 @@ class CriterionScore(BaseModel):
     criterionId: str
     criterionLabel: str
     score: int = Field(ge=0, le=100)
-    evidence: list[str] = Field(
-        min_length=1,
-        description="Profildeki somut kanıtlar; kanıt yoksa tek eleman olarak 'Kanıt yok'",
-    )
+    evidenceIds: list[str] = Field(default_factory=list)
     reason: str
-
-    @model_validator(mode="after")
-    def require_real_evidence_for_high_score(self):
-        has_real_evidence = any(
-            item.strip().casefold() not in _NO_EVIDENCE_MARKERS for item in self.evidence
-        )
-        if self.score >= 20 and not has_real_evidence:
-            raise ValueError(
-                f"score={self.score} (>= 20) ama evidence yalnızca 'kanıt yok' türünden "
-                "placeholder içeriyor — kanıtsız yüksek puan kabul edilmez."
-            )
-        return self
 
 
 class EvaluationResult(BaseModel):

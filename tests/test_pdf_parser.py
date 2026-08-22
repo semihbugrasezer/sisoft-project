@@ -57,6 +57,22 @@ def test_mock_cvs_are_readable(pdf_path):
     assert len(text) >= 100
 
 
+def test_multicolumn_text_keeps_block_sentences_contiguous():
+    text, _ = validate_and_extract_text(
+        Path("mock_cvs/cv_burak_yildiz.pdf").read_bytes()
+    )
+    normalized = " ".join(text.split())
+
+    assert (
+        "8 yillik React uzmanlik deneyimim var, acik kaynak katkilarim mevcut."
+        in normalized
+    )
+    assert (
+        "Clean code, code review kulturu ve test-driven development uyguladim."
+        in normalized
+    )
+
+
 @pytest.mark.parametrize("layout", ["single", "columns", "multipage", "table"])
 def test_different_pdf_layouts_are_readable(layout):
     text, _ = validate_and_extract_text(_layout_pdf(layout))

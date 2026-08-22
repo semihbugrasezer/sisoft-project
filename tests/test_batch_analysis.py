@@ -1,4 +1,5 @@
-"""BatchAnalysisService'in validation, limit ve top-3 sözleşmesi."""
+import json
+
 import pytest
 
 from app.application.batch_analysis_service import BatchAnalysisService
@@ -47,7 +48,7 @@ class FakeCVService:
                             criterionId="react",
                             criterionLabel="React",
                             score=80,
-                            evidence=["x"],
+                            evidenceIds=["ev_test"],
                             reason="x",
                         )
                     ],
@@ -111,6 +112,23 @@ async def test_five_cvs_produce_only_top_three_candidates():
 
     assert result.processedCVCount == 5
     assert len(result.topCandidates) == 3
+
+
+@pytest.mark.asyncio
+async def test_final_assignment_contract_does_not_leak_internal_evidence():
+    names = [f"{index}.pdf" for index in range(MAX_CV_COUNT)]
+    service = BatchAnalysisService(FakeCVService({name: "ok" for name in names}))
+
+    result, _ = await service.analyze_batch(_files(names), CRITERIA)
+    payload = result.model_dump()
+    serialized = json.dumps(payload)
+
+    assert set(payload) == {
+        "status", "processedCVCount", "userDefinedCriteria", "topCandidates",
+    }
+    assert "evidenceId" not in serialized
+    assert '"start"' not in serialized
+    assert '"end"' not in serialized
     assert [candidate.rank for candidate in result.topCandidates] == [1, 2, 3]
 
 
@@ -150,7 +168,7 @@ async def test_batch_level_truncation_is_reported_to_user():
             )
             evaluation = EvaluationResult(
                 scores=[CriterionScore(criterionId="react", criterionLabel="React",
-                                       score=80, evidence=["x"], reason="x")],
+                                       score=80, evidenceIds=["ev_test"], reason="x")],
                 strengths=["x"], weaknesses=["zayıf yön"], recommendations=["tavsiye"], hrEvaluation="iyi",
             )
             return [(profile, evaluation) for _ in texts]

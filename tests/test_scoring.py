@@ -5,9 +5,9 @@ from app.domain.scoring import compute_average, dynamic_scores_dict, rank_top_n
 
 def test_compute_average_rounds_to_two_decimals():
     scores = [
-        CriterionScore(criterionId="a", criterionLabel="A", score=95, evidence=["x"], reason="x"),
-        CriterionScore(criterionId="b", criterionLabel="B", score=85, evidence=["x"], reason="x"),
-        CriterionScore(criterionId="c", criterionLabel="C", score=90, evidence=["x"], reason="x"),
+        CriterionScore(criterionId="a", criterionLabel="A", score=95, evidenceIds=["x"], reason="x"),
+        CriterionScore(criterionId="b", criterionLabel="B", score=85, evidenceIds=["x"], reason="x"),
+        CriterionScore(criterionId="c", criterionLabel="C", score=90, evidenceIds=["x"], reason="x"),
     ]
     assert compute_average(scores) == 90.0
 
@@ -19,7 +19,7 @@ def test_compute_average_empty_is_zero():
 def test_dynamic_scores_dict_maps_label_to_score():
     scores = [
         CriterionScore(
-            criterionId="a", criterionLabel="React", score=70, evidence=["x"], reason="x"
+            criterionId="a", criterionLabel="React", score=70, evidenceIds=["x"], reason="x"
         )
     ]
     assert dynamic_scores_dict(scores) == {"React": 70}

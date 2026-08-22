@@ -42,7 +42,14 @@ def validate_and_extract_text(pdf_bytes: bytes, max_chars: int | None = None) ->
         total = 0
         truncated = False
         for index, page in enumerate(doc.pages()):
-            chunk = page.get_text(sort=True)
+            # Düz "text" + sort=True iki kolonun aynı y-koordinatındaki satırlarını
+            # birbirine geçirir. Block metinlerini sıralayıp ayrı ayrı birleştirmek,
+            # her kolon içindeki cümle sırasını korur; criterionEvidence exact-span
+            # doğrulaması için bu sıra sözleşmenin parçasıdır.
+            blocks = page.get_text("blocks", sort=True)
+            chunk = "\n".join(
+                block[4].rstrip("\n") for block in blocks if block[6] == 0
+            )
             chunks.append(chunk)
             total += len(chunk)
             if max_chars is not None and total >= max_chars:

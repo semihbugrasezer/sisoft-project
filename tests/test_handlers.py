@@ -96,7 +96,7 @@ async def test_single_analysis_report_falls_back_to_plain_text_on_bad_markdown()
                 criterionId="react",
                 criterionLabel="React",
                 score=90,
-                evidence=["5 yıl React deneyimi"],
+                evidenceIds=["ev_test"],
                 reason="x",
             )
         ],
@@ -142,7 +142,7 @@ async def test_single_analysis_warns_user_when_extracted_text_was_truncated():
     )
     evaluation = EvaluationResult(
         scores=[CriterionScore(criterionId="react", criterionLabel="React", score=90,
-                                evidence=["x"], reason="x")],
+                                evidenceIds=["ev_test"], reason="x")],
         strengths=["x"], weaknesses=["x"], recommendations=["x"], hrEvaluation="iyi",
     )
 

@@ -141,8 +141,11 @@ sequenceDiagram
     H->>CVS: analyze(pdf_bytes, criteria)
     CVS->>PDF: validate_and_extract_text()
     PDF-->>CVS: metin (veya PDFValidationError)
-    CVS->>LLM: structured_chat(CV_EXTRACTOR_SYSTEM) → CandidateProfile
-    CVS->>LLM: structured_chat(CANDIDATE_EVALUATOR_SYSTEM) → EvaluationResult
+    CVS->>LLM: structured_chat(CV_EXTRACTOR_SYSTEM, criteria) → evidence drafts
+    CVS->>CVS: exact source span + backend evidenceId
+    CVS->>LLM: structured_chat(EVIDENCE_VERIFIER_SYSTEM) → supports/contradicts/irrelevant
+    CVS->>LLM: structured_chat(CANDIDATE_EVALUATOR_SYSTEM) → score + evidenceIds
+    CVS->>CVS: criterion-ID invariant + rapor tutarlılığı
     CVS-->>H: (profile, evaluation, truncated)
     H-->>U: Markdown rapor
 ```
@@ -150,7 +153,7 @@ sequenceDiagram
 Çoklu CV akışı aynı adımları izler, ancak `BatchAnalysisService` önce tüm
 dosyaları paralel doğrular (`asyncio.gather`; ilk hatada kesmez — hepsi
 biter, sonra tamamı reddedilir) ve LLM extraction/
-evaluation'ı CV başına değil tüm belgeler için tek bir toplu istek olarak
+verifier/evaluation aşamalarını CV başına değil tüm belgeler için birer toplu istek olarak
 çalıştırır. Yalnız eksik/tekrarlı evaluation belgeleri tekli şemayla tamamlanır
 ve eksik/tekrarlı kriter kümesi bir kez düzeltilir.
 
@@ -194,9 +197,11 @@ eşzamanlı ikinci analiz aynı dosyaları alamaz ve analiz sırasında yeni yü
 dosyalar sonraki batch'te kalır.
 
 Batch'te tüm PDF'ler önce paralel ve all-or-nothing doğrulanır. LLM aşaması
-nominal olarak iki toplu çağrıdır: extraction ve evaluation. Model bir belgeyi
-veya kriteri atlar/tekrarlarsa yalnız sorunlu profil tekli şemayla bir kez
-tamamlanır; yine eksikse kısmi Top-3 döndürülmez.
+nominal olarak üç toplu çağrıdır: extraction, evidence verification ve evaluation.
+Extractor bir kriter ledger'ını boş bırakırsa yalnız eksik belge-kriter çifti dar
+kapsamlı evidence repair alır. Model bir belgeyi, kriteri veya evidence ID bağını
+atlar/tekrarlarsa yalnız sorunlu profil tekli şemayla bir kez tamamlanır; yine
+eksikse kısmi Top-3 döndürülmez veya kanıtsız skor güvenli biçimde `0` olur.
 
 ## Temel Tasarım Kararları
 
@@ -204,8 +209,9 @@ tamamlanır; yine eksikse kısmi Top-3 döndürülmez.
 |---|---|
 | Ayrı intent, criteria extraction, CV extraction ve evaluation prompt'ları | Hata kaynağı görünür ve her sorumluluk ayrı test edilebilir |
 | Ortalama ve Top-3 backend'de | Aritmetik ve sıralama deterministiktir |
-| Ham PDF yerine önce `CandidateProfile` | PDF'nin ortak JSON şartı ve prompt-injection sınırı korunur |
-| CV başına istek yerine nominal iki batch çağrısı | Tek yerel modelde token tekrarı ve timeout riski azalır |
+| Ham PDF yerine önce `CandidateProfile + criterionEvidence[]` | Dinamik kriter gerçekleri exact-source quote olarak ortak JSON'a taşınır; raw kaynak doğrulaması evaluation'dan önce biter |
+| PDF metnini satır yerine sıralı block olarak birleştirme | Çok kolonlu layout'ta kolon cümleleri kesintisiz kalır; exact-source kanıt sahte negatif üretmez |
+| Nominal üç batch çağrısı + yalnız eksik öğeye dar retry | Verifier ayrı kalırken normal yolda token tekrarı azalır; model hatası tüm batch'i yeniden çalıştırmaz |
 | Yalnız LLM için port | İki gerçek LLM implementasyonu vardır; tek SQLite/PDF implementasyonu için ek arayüz YAGNI'dir |
 | SQLite + rolling summary | Demo kurulumu basit kalır, prompt penceresi sınırlıyken uzun bağlam korunur |
 | Vector DB yok | Retrieval yapılacak kalıcı CV koleksiyonu bulunmaz |
@@ -220,7 +226,7 @@ niyet structured output ile belirlenir; gecikme gerektiğinde isteğe bağlı
 - **Tek instance varsayımı** — SQLite ve bellek içi kilitler/albüm tamponu tek
   process varsayar; yatay ölçekleme için paylaşılan bir state store gerekir.
 - **Batch LLM aşaması CV başına paralel değil** — tek yerel model için nominal
-  iki toplu çağrı kullanılır; yalnız eksik belge/kriterler dar kapsamlı retry alır.
+  üç toplu çağrı kullanılır; yalnız eksik belge/kriterler dar kapsamlı retry alır.
 - **20.000 karakter extraction sınırı** — çok uzun CV'ler kırpılır; kullanıcı
   uyarılır.
 - **Encryption-at-rest yok** — bkz. [SECURITY.md](../SECURITY.md). Sohbet geçmişi
