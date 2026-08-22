@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from app.application.criteria_service import CriteriaService
 from app.domain.errors import IntentUndecidableError, LLMOutputValidationError
 from app.domain.models import CriteriaExtractionResult, CriteriaIntentResult, Criterion
-from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM
+from app.infrastructure.llm.prompts import CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM
 
 
 class FakeLLM:
@@ -150,6 +150,11 @@ def test_dynamic_criteria_has_no_arbitrary_eight_item_limit():
     assert "1 ile 8" not in CRITERIA_EXTRACTOR_SYSTEM
 
 
+def test_criteria_prompts_request_source_language_evidence_hints():
+    for prompt in (CRITERIA_EXTRACTOR_SYSTEM, CRITERIA_INTENT_SYSTEM):
+        assert "Türkçe ve İngilizce" in prompt
+
+
 @pytest.mark.asyncio
 async def test_free_text_without_keyword_can_define_criteria():
     class IntentLLM:
@@ -183,11 +188,21 @@ async def test_natural_language_criteria_uses_dedicated_extraction_before_save()
             if response_model is CriteriaIntentResult:
                 return CriteriaIntentResult(
                     intent="criteria",
-                    criteria=[Criterion(id="react", label="React tecrübesi", description="x")],
+                    criteria=[Criterion(
+                        id="react",
+                        label="react_tecrübesi",
+                        description="intent metadata",
+                        evidenceHints=["React"],
+                    )],
                 )
             return CriteriaExtractionResult(
                 criteria=[
-                    Criterion(id="react", label="React tecrübesi", description="x"),
+                    Criterion(
+                        id="react",
+                        label="React tecrübesi",
+                        description="dedicated extraction metadata",
+                        evidenceHints=["React", "React.js"],
+                    ),
                     Criterion(id="clean_code", label="temiz kod yazımı", description="x"),
                     Criterion(id="remote", label="uzaktan çalışma uyumu", description="x"),
                 ]
@@ -202,6 +217,9 @@ async def test_natural_language_criteria_uses_dedicated_extraction_before_save()
 
     assert llm.response_models == [CriteriaIntentResult, CriteriaExtractionResult]
     assert [criterion.id for criterion in criteria] == ["react", "clean_code", "remote"]
+    assert criteria[0].label == "React tecrübesi"
+    assert criteria[0].description == "dedicated extraction metadata"
+    assert criteria[0].evidenceHints == ["React", "React.js"]
     assert [item["id"] for item in repo.saved] == ["react", "clean_code", "remote"]
 
 
@@ -228,7 +246,7 @@ async def test_intent_and_extractor_semantic_duplicate_is_saved_once():
         1, "uzaktan çalışma uyumuna göre değerlendir"
     )
 
-    assert [criterion.label for criterion in criteria] == ["uzaktan çalışma uyumlu"]
+    assert [criterion.label for criterion in criteria] == ["uzaktan çalışma uyumu"]
 
 
 @pytest.mark.asyncio

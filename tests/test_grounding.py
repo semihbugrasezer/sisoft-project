@@ -87,6 +87,14 @@ def test_dynamic_term_fallback_preserves_qualified_exact_passage():
     assert passages == ["React deneyimim sınırlı, birkaç küçük projede kullandım."]
 
 
+def test_turkish_criterion_can_preserve_english_clean_code_passage():
+    source = "Yetenekler: React, SOLID, Clean Code, Jest"
+
+    passages = find_criterion_passages(source, ["temiz kod", "Clean Code", "code review"])
+
+    assert passages == [source]
+
+
 def test_unrelated_stack_cannot_be_an_explicit_contradiction():
     assert not has_criterion_term(
         "Python ve Go ile backend sistemler geliştirdi.",

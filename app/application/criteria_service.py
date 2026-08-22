@@ -72,7 +72,9 @@ class CriteriaService:
         result = await self._llm.structured_chat(
             CRITERIA_EXTRACTOR_SYSTEM, free_text, CriteriaExtractionResult
         )
-        candidates = [*(seed_criteria or []), *result.criteria]
+        # Özel extraction daha zengin label/description/evidenceHints üretir;
+        # intent çıktısı yalnız özel çağrının kaçırdığı kriterlere yedektir.
+        candidates = [*result.criteria, *(seed_criteria or [])]
         criteria: list[Criterion] = []
         seen_ids: set[str] = set()
         seen_label_keys: set[frozenset[str]] = set()
