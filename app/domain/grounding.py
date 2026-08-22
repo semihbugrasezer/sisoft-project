@@ -44,9 +44,31 @@ def is_grounded_in_source(value: str | None, source_text: str) -> bool:
     return all(word in source_words for word in _words(value))
 
 
+# Somut iddia sayılmayan gramatik kabuk. Cümle bazlı doğrulama (ground_narrative)
+# devreye girdikten SONRA bu liste yük taşımaya başladı: canlı koşuda
+# "7 yıl React deneyimi ve uzaktan çalışma deneyimi sahibi." cümlesi yalnız
+# "sahibi" kelimesi yüzünden düşüyor, kaynakta açıkça yazan uzaktan bilgisi
+# normalize JSON'a giremiyordu.
+#
+# Liste bilinçli olarak DAR tutulur: yalnız anlam taşımayan sarmalayıcılar.
+# "tamamen", "uzaktan", "hibrit" gibi anlamı değiştiren nitelemeler ASLA
+# eklenmemeli — kaynak "kısmen uzaktan" derken modelin "tamamen uzaktan" demesi
+# gerçek bir sapmadır ve yakalanmaya devam etmelidir.
 _EVIDENCE_STOPWORDS = {_normalize(word) for word in {
     "aday", "alanında", "bir", "bu", "candidate", "deneyim", "deneyimi",
     "deneyimlidir", "experience", "ile", "kanıt", "tecrübe", "the", "ve", "yıl",
+    # edat / bağlaç
+    "ancak", "ayrıca", "beri", "boyunca", "daha", "gibi", "göre", "için", "ise",
+    "kadar", "konusunda", "olarak", "önce", "sonra", "üzere", "veya", "yana",
+    # yüklem / iyelik kalıpları
+    "bulunmaktadır", "sahibi", "sahip", "sahiptir", "vardır",
+    # aday kelimesinin çekimleri
+    "adaya", "adayı", "adayın",
+    # süre/deneyim çekimleri
+    "deneyime", "deneyimine", "deneyimli", "tecrübesi", "tecrübeye",
+    "yıldır", "yıllık",
+    # `_words` kesme işaretinden böler: "2021'den" -> {"2021", "den"}
+    "dan", "den", "tan", "ten",
 }}
 
 
@@ -86,3 +108,35 @@ def is_grounded_claim_in_source(value: str, source_text: str) -> bool:
         any(_term_matches_source(word, source_word) for source_word in source_words)
         for word in evidence_words
     )
+
+
+# Anlatı alanları (summary, workExperiences.description) tek blok olarak
+# `is_grounded_in_source` ile doğrulanınca pratikte HER ZAMAN siliniyordu: o kural
+# değerdeki her kelimeyi kaynakta arıyor ve doğal dilde "çeşitli", "sahibim" gibi
+# tek bir dolgu kelimesi tüm bloğu çöpe atıyor. Canlı 5 CV koşusunda üç adayın
+# üçünde de kaynakta açıkça yazan "tam uzaktan" bilgisi bu yüzden normalize JSON'a
+# hiç girmedi ve "uzaktan çalışma uyumu" kriteri 3/3 yanlış 0 aldı.
+#
+# Çözüm kuralı gevşetmek değil, doğru granülariteye uygulamak: blok yerine cümle.
+# Kaynağa dayanan cümleler korunur, dayanmayan cümle atılır.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def ground_narrative(value: str | None, source_text: str) -> str | None:
+    """Anlatı alanını cümle bazında doğrular; doğrulanamayan cümleyi atar.
+
+    Kimlik alanları (ad, e-posta, şirket, tarih) `is_grounded_in_source` ile
+    doğrulanmaya devam eder — onların birebir kopyalanması beklenir. Burada
+    cümle başına `is_grounded_claim_in_source` kullanılır: cümledeki tüm somut
+    terimler kaynağa dayanmalı, ama gramatik kabuk iddia sayılmaz. Yani uydurma
+    bir terim içeren cümle yine atılır, sadece artık yanındaki doğru cümleleri
+    beraberinde götürmez.
+    """
+    if not value or not value.strip():
+        return None
+    grounded = [
+        sentence.strip()
+        for sentence in _SENTENCE_BOUNDARY.split(value)
+        if sentence.strip() and is_grounded_claim_in_source(sentence, source_text)
+    ]
+    return " ".join(grounded) or None

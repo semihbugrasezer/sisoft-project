@@ -18,6 +18,7 @@ from collections import Counter
 
 from app.domain.errors import LLMOutputValidationError
 from app.domain.grounding import (
+    ground_narrative,
     is_grounded_claim_in_source,
     is_grounded_in_source,
 )
@@ -147,8 +148,11 @@ class CVAnalysisService:
         for work_item in profile.workExperiences:
             values = {
                 field: grounded(getattr(work_item, field))
-                for field in ("company", "title", "startDate", "endDate", "description")
+                for field in ("company", "title", "startDate", "endDate")
             }
+            # description serbest metindir: cümle bazında doğrulanır, tek bir
+            # doğrulanamayan cümle bütün deneyim açıklamasını silmemeli.
+            values["description"] = ground_narrative(work_item.description, source_text)
             if any(values.values()):
                 work_experiences.append(work_item.model_copy(update=values))
         education = []
@@ -166,7 +170,7 @@ class CVAnalysisService:
         ]
         normalized = profile.model_copy(update={
             "contact": contact,
-            "summary": grounded(profile.summary),
+            "summary": ground_narrative(profile.summary, source_text),
             "skills": skills,
             "workExperiences": work_experiences,
             "education": education,
